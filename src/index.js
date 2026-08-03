@@ -12,7 +12,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Mente API is running!' });
+  res.json({ status: 'ok', message: 'FOCO API is running!' });
 });
 
 app.listen(port, () => {

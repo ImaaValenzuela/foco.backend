@@ -1,12 +1,12 @@
 # 📋 Requisitos del Proyecto Académico
 
-> Documento de mapeo entre las funcionalidades del producto **Mente** y los requisitos de la consigna **"Proyector Integrador 2026"** (Fundación Pescar).
+> Documento de mapeo entre las funcionalidades del producto **FOCO** y los requisitos de la consigna **"Proyector Integrador 2026"** (Fundación Pescar).
 
 ---
 
 ## 1. Resumen Ejecutivo del Cumplimiento
 
-| Requisito de la Consigna | Feature de Mente | Estado |
+| Requisito de la Consigna | Feature de FOCO | Estado |
 |---|---|---|
 | Sistema de Login con Registro | Auth completa (email/pass + JWT) | ✅ Planificado |
 | Onboarding Activo (diagnóstico) | Formulario 3 ejes (Rutina, Intereses, Motivaciones) | ✅ Planificado |
@@ -26,11 +26,11 @@
 
 **Requisito de la consigna:** El registro e inicio de sesión son obligatorios. Al registrarse, el usuario completa un formulario de diagnóstico con tres ejes clave.
 
-**Implementación en Mente:**
+**Implementación en FOCO:**
 
 ```
 Flujo de Registro:
-1. Usuario accede a app.mente.com
+1. Usuario accede a app.foco.com
 2. Redirigido a /register si no está autenticado
 3. Completa: email + contraseña + nombre
 4. Backend crea registro en tabla `users`
@@ -62,7 +62,7 @@ Uso de los datos:
 
 **Requisito de la consigna:** Cada usuario puede crear su perfil, modificar sus datos de onboarding o eliminar su cuenta de forma autónoma.
 
-**Implementación en Mente:**
+**Implementación en FOCO:**
 
 | Operación | Pantalla | Endpoint |
 |---|---|---|
@@ -77,9 +77,9 @@ Uso de los datos:
 
 ### 2.3 Entidad Principal con CRUD — El Canvas y sus Bloques
 
-**Requisito de la consigna:** El sistema debe tener una entidad principal que el usuario pueda gestionar completamente.
+**Requisito de la consigna:** El sistema debe tener una entidad principal que el usuario pueda gestionar completafoco.
 
-**Implementación en Mente:**
+**Implementación en FOCO:**
 
 La entidad principal es el **Canvas con sus Bloques**. Cada bloque es un elemento que el usuario puede:
 
@@ -118,7 +118,7 @@ La entidad principal es el **Canvas con sus Bloques**. Cada bloque es un element
 **Implementación técnica:**
 
 ```
-Prompt base del sistema (generado dinámicamente por el backend):
+Prompt base del sistema (generado dinámicafoco por el backend):
 
 "Eres el asistente personal de {user.full_name}. 
 Datos de su perfil:
@@ -137,7 +137,7 @@ de forma cálida, concisa y accionable."
 
 **Capacidades:**
 1. **Recomendaciones de organización** — basadas en el perfil y proyectos activos
-2. **Resúmenes semanales** — generados automáticamente cada domingo (cron job)
+2. **Resúmenes semanales** — generados automáticafoco cada domingo (cron job)
 3. **Mensajes motivacionales** — basados en la racha de hábitos y objetivos
 4. **Asistencia en tiempo real** — responde preguntas del usuario en el chat
 
