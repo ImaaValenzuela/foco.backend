@@ -12,7 +12,16 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const userRoutes = require('./routes/userRoutes');
+const habitRoutes = require('./routes/habitRoutes');
+const habitLogRoutes = require('./routes/habitLogRoutes');
+const blockRoutes = require('./routes/blockRoutes');
+const onboardingRoutes = require('./routes/onboardingRoutes');
+
 app.use('/api/users', userRoutes);
+app.use('/api/habits', habitRoutes);
+app.use('/api/habit-logs', habitLogRoutes);
+app.use('/api/blocks', blockRoutes);
+app.use('/api/onboarding', onboardingRoutes);
 
 const pool = require('./db');
 
