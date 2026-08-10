@@ -14,8 +14,24 @@ app.use(express.urlencoded({ extended: true }));
 const userRoutes = require('./routes/userRoutes');
 app.use('/api/users', userRoutes);
 
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'FOCO API is running!' });
+const pool = require('./db');
+
+app.get('/api/health', async (req, res) => {
+  try {
+    const dbRes = await pool.query('SELECT NOW()');
+    res.json({ 
+      status: 'ok', 
+      message: 'Mente API is running!', 
+      db_time: dbRes.rows[0].now 
+    });
+  } catch (error) {
+    console.error('Error connecting to DB:', error);
+    res.status(500).json({ 
+      status: 'error', 
+      message: 'API running but Database connection failed',
+      error: error.message
+    });
+  }
 });
 
 app.listen(port, () => {
