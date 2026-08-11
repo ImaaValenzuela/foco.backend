@@ -1,39 +1,70 @@
-// Este archivo recibe los pedidos HTTP de usuarios y responde usando el service
 const userService = require('../services/userService');
 
-// Se ejecuta cuando llega un pedido POST /api/users
-function crear(req, res) {
-  // req.body es un objeto con los datos que mandaron para crear el usuario
-  const email = req.body.email;
-  const nombreCompleto = req.body.nombreCompleto;
-
-  // Si no mandaron email, no dejamos crear el usuario
-  if (!email) {
-    res.status(400).json({ error: 'El email es requerido' });
-    return;
+async function crear(req, res) {
+  try {
+    const { name, email, password, role, subscription_tier } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: 'name, email y password son requeridos' });
+    }
+    const usuario = await userService.crearUsuario({ name, email, password, role, subscription_tier });
+    res.status(201).json(usuario);
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ error: 'Ya existe un usuario con ese email' });
+    }
+    console.error(error);
+    res.status(500).json({ error: 'Error interno al crear el usuario' });
   }
-
-  // Le pedimos al service que cree el usuario y guarde los datos
-  const usuario = userService.crearUsuario(email, nombreCompleto);
-
-  // Respondemos con el usuario creado y código 201 (creado con éxito)
-  res.status(201).json(usuario);
 }
 
-// Se ejecuta cuando llega un pedido GET /api/users/:id
-function obtenerPorId(req, res) {
-  // req.params.id es el valor que viene en la URL, ej: /api/users/5 -> "5"
-  const id = req.params.id;
-
-  const usuario = userService.obtenerUsuarioPorId(id);
-
-  // Si no se encontró el usuario, respondemos con error 404
-  if (!usuario) {
-    res.status(404).json({ error: 'Usuario no encontrado' });
-    return;
+async function obtenerTodos(req, res) {
+  try {
+    const usuarios = await userService.obtenerUsuarios();
+    res.json(usuarios);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error interno al obtener los usuarios' });
   }
-
-  res.json(usuario);
 }
 
-module.exports = { crear, obtenerPorId };
+async function obtenerPorId(req, res) {
+  try {
+    const usuario = await userService.obtenerUsuarioPorId(req.params.id);
+    if (!usuario) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    res.json(usuario);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error interno al obtener el usuario' });
+  }
+}
+
+async function actualizar(req, res) {
+  try {
+    const { name, role, subscription_tier } = req.body;
+    const usuario = await userService.actualizarUsuario(req.params.id, { name, role, subscription_tier });
+    if (!usuario) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    res.json(usuario);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error interno al actualizar el usuario' });
+  }
+}
+
+async function eliminar(req, res) {
+  try {
+    const result = await userService.eliminarUsuario(req.params.id);
+    if (!result) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    res.status(204).send();
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error interno al eliminar el usuario' });
+  }
+}
+
+module.exports = { crear, obtenerTodos, obtenerPorId, actualizar, eliminar };
