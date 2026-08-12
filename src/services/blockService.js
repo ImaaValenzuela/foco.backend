@@ -45,10 +45,19 @@ async function eliminarBlock(id) {
   return res.rows[0];
 }
 
+async function obtenerBlocks() {
+  const res = await pool.query(
+    `SELECT id, user_id, type, content, updated_at
+     FROM blocks ORDER BY updated_at DESC`
+  );
+  return res.rows;
+}
+
 module.exports = {
   crearBlock,
   obtenerBlocksPorUsuario,
   obtenerBlockPorId,
   actualizarBlock,
   eliminarBlock,
+  obtenerBlocks
 };
