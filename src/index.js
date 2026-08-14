@@ -7,7 +7,7 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 4000;
 
-const allowedOrigins = (process.env.CORS_ORIGINS || '')
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:5173,http://localhost:8081')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
@@ -15,7 +15,8 @@ const allowedOrigins = (process.env.CORS_ORIGINS || '')
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.length === 0) {
+      // Native mobile requests normally do not send Origin, so keep them allowed.
+      if (!origin) {
         return callback(null, true);
       }
       if (allowedOrigins.includes(origin)) {
