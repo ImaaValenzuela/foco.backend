@@ -5,26 +5,26 @@
 El proyecto sigue una **arquitectura desacoplada en 3 repositorios independientes**, cada uno con su propio ciclo de vida, dominio de deployment y responsabilidad técnica.
 
 ```
-mente/
-├── mente.landing/        # Sitio comercial estático (mente.com)
-├── mente.frontend/       # Aplicación web interactiva (app.mente.com)
-├── mente.admin/          # Panel administrativo (admin.mente.com)
-└── mente.backend/        # API RESTful + IA + Pasarela de Pago
+foco/
+├── foco.landing/        # Sitio comercial estático (foco.com)
+├── foco.frontend/       # Aplicación web interactiva (app.foco.com)
+├── foco.admin/          # Panel administrativo (admin.foco.com)
+└── foco.backend/        # API RESTful + IA + Pasarela de Pago
 ```
 
 ---
 
 ## 2. Repositorios y Responsabilidades
 
-### 2.1 `mente.landing` — Sitio Comercial
-- **URL objetivo:** `mente.com`
+### 2.1 `foco.landing` — Sitio Comercial
+- **URL objetivo:** `foco.com`
 - **Propósito:** Conversión y SEO. Landing page estática enfocada en captar usuarios nuevos.
 - **Stack:** HTML/CSS/JS estático o Next.js (SSG/SSR para SEO)
 - **Contenido:** Hero, Features, Precios, FAQ, CTA de registro
 - **KPIs:** Tasa de conversión a registro, bounce rate, posicionamiento SEO
 
-### 2.2 `mente.frontend` — Aplicación Web
-- **URL objetivo:** `app.mente.com`
+### 2.2 `foco.frontend` — Aplicación Web
+- **URL objetivo:** `app.foco.com`
 - **Propósito:** La experiencia principal del usuario. Canvas interactivo, gestión de bloques, habits.
 - **Stack:** **React / Next.js** (App Router recomendado)
 - **Características clave:**
@@ -38,8 +38,8 @@ mente/
   - `framer-motion` — Animaciones del canvas y transiciones
   - `react-query` o `SWR` — Fetching y caché de datos del servidor
 
-### 2.3 `mente.admin` — Panel Administrativo
-- **URL objetivo:** `admin.mente.com`
+### 2.3 `foco.admin` — Panel Administrativo
+- **URL objetivo:** `admin.foco.com`
 - **Propósito:** Panel de control centralizado para los administradores, enfocado en auditoría de usuarios y KPIs del negocio.
 - **Stack:** React / Vite (o Next.js) para una SPA administrativa rápida.
 - **Características clave:**
@@ -47,7 +47,7 @@ mente/
   - Gráficos de analíticas (DAU/MAU, bloques creados, etc.).
   - Búsqueda y gestión de usuarios (bajas, auditoría).
 
-### 2.4 `mente.backend` — API RESTful
+### 2.4 `foco.backend` — API RESTful
 - **Propósito:** Validaciones de negocio, seguridad, encriptación, orquestación con IA y pasarela de pago.
 - **Stack:** **Node.js con NestJS** (recomendado por su estructura modular y escalabilidad) o Express
 - **Responsabilidades:**
@@ -84,8 +84,8 @@ mente/
 │                                     CLIENTE (Browser)                                       │
 │                                                                                             │
 │  ┌──────────────────┐      ┌──────────────────────────┐      ┌──────────────────────────┐   │
-│  │  mente.landing   │      │     mente.frontend       │      │      mente.admin         │   │
-│  │  (mente.com)     │      │    (app.mente.com)       │      │    (admin.mente.com)     │   │
+│  │  foco.landing   │      │     foco.frontend       │      │      foco.admin         │   │
+│  │  (foco.com)     │      │    (app.foco.com)       │      │    (admin.foco.com)     │   │
 │  │  Next.js SSG     │      │    React + Next.js       │      │       React / Vite       │   │
 │  └────────┬─────────┘      └───────────┬──────────────┘      └───────────┬──────────────┘   │
 └───────────┼────────────────────────────┼─────────────────────────────────┼──────────────────┘
@@ -93,7 +93,7 @@ mente/
             │ (Redirect a registro)      │ (Llamadas REST / JSON)          │ (Llamadas REST Admin)
             │                            ▼                                 ▼
 ┌───────────┼──────────────────────────────────────────────────┐
-│           │              BACKEND (mente.backend)              │
+│           │              BACKEND (foco.backend)              │
 │           │              Node.js + NestJS API                 │
 │           │                                                   │
 │           │   ┌──────────┐  ┌─────────┐  ┌──────────────┐   │
@@ -118,7 +118,7 @@ mente/
 ```
 Usuario → Registro → Formulario Onboarding (Rutina/Intereses/Motivaciones)
        → Datos persisten en DB → JWT emitido
-       → Redirigido a app.mente.com/dashboard
+       → Redirigido a app.foco.com/dashboard
 
 Usuario → Login → Validación → JWT refresh → App
 ```
@@ -127,7 +127,7 @@ Usuario → Login → Validación → JWT refresh → App
 
 ## 6. Límites del MVP (Out of Scope)
 
-Estas funcionalidades están **explícitamente fuera del alcance** del MVP v1.0:
+Estas funcionalidades están **explícitafoco fuera del alcance** del MVP v1.0:
 
 - ❌ Sincronización multiusuario en tiempo real simultánea (estilo Figma cooperativo)
 - ❌ Aplicaciones móviles nativas (iOS / Android) — se suple con diseño web responsive
@@ -141,6 +141,6 @@ Estas funcionalidades están **explícitamente fuera del alcance** del MVP v1.0:
 - Todas las contraseñas hasheadas con **bcrypt** (salt rounds ≥ 12)
 - Tokens JWT con **expiración corta** (15 min access / 7 días refresh)
 - Variables de entorno gestionadas vía `.env` con validación en arranque (NestJS `@nestjs/config`)
-- CORS restringido a los dominios `mente.com` y `app.mente.com`
+- CORS restringido a los dominios `foco.com` y `app.foco.com`
 - Rate limiting en endpoints de autenticación (`@nestjs/throttler`)
 - Validación de inputs con `class-validator` en todos los DTOs

@@ -1,7 +1,7 @@
 {
-  "name": "mente-backend",
+  "name": "foco-backend",
   "version": "1.0.0",
-  "description": "API RESTful de Mente",
+  "description": "API RESTful de FOCO",
   "main": "src/index.js",
   "engines": {
     "node": ">=18"

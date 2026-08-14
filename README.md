@@ -1,6 +1,6 @@
-# ⚙️ Mente — Backend API (`mente-backend`)
+# ⚙️ FOCO — Backend API (`foco-backend`)
 
-Este repositorio contiene el servidor de la API RESTful de **Mente**, encargado de las reglas de negocio, seguridad, persistencia de datos, integraciones con IA y la pasarela de pagos.
+Este repositorio contiene el servidor de la API RESTful de **FOCO**, encargado de las reglas de negocio, seguridad, persistencia de datos, integraciones con IA y la pasarela de pagos.
 
 ---
 
@@ -28,7 +28,7 @@ Este repositorio contiene el servidor de la API RESTful de **Mente**, encargado 
 ## 📂 Estructura del Proyecto (NestJS)
 
 ```
-mente-backend/
+foco-backend/
 ├── prisma/              # Esquema de base de datos (schema.prisma) y migraciones
 ├── src/
 │   ├── auth/            # Módulo de Autenticación y Onboarding
@@ -51,7 +51,7 @@ Crea un archivo `.env` en la raíz del backend:
 
 ```env
 PORT=4000
-DATABASE_URL="postgresql://user:password@localhost:5432/mente?schema=public"
+DATABASE_URL="postgresql://user:password@localhost:5432/foco?schema=public"
 
 # Auth
 JWT_SECRET="tu_firma_jwt_secreta_super_segura"
