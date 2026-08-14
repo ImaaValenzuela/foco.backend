@@ -6,6 +6,9 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 4000;
+const host = process.env.HOST || '0.0.0.0';
+
+app.disable('x-powered-by');
 
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:5173,http://localhost:8081')
   .split(',')
@@ -58,10 +61,9 @@ app.get('/api/health', async (req, res) => {
     });
   } catch (error) {
     console.error('Error connecting to DB:', error);
-    res.status(500).json({ 
+    res.status(503).json({
       status: 'error', 
-      message: 'API running but Database connection failed',
-      error: error.message
+      message: 'API running but Database connection failed'
     });
   }
 });
@@ -74,6 +76,17 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-app.listen(port, () => {
-  console.log(`[server]: Server is running at http://localhost:${port}`);
+const server = app.listen(port, host, () => {
+  console.log(`[server]: Server is running at http://${host}:${port}`);
 });
+
+async function shutdown(signal) {
+  console.log(`[server]: ${signal} received, shutting down`);
+  server.close(async () => {
+    await pool.end();
+    process.exit(0);
+  });
+}
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));

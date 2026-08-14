@@ -110,3 +110,18 @@ Para entender el modelo relacional, las validaciones de negocio y el backend:
 - [Arquitectura Técnica Completa](./docs/02-arquitectura-tecnica.md)
 - [Requisitos del Proyecto y Endpoints](./docs/06-requisitos-del-proyecto.md)
 - [Estrategia Git y Configuración de GitHub](./docs/07-devops-y-git.md)
+
+## 🚀 Despliegue en Render
+
+El archivo `render.yaml` contiene la configuración del Web Service. Desde Render:
+
+1. Crear un **Web Service** conectado al repositorio `foco.backend`.
+2. Usar la rama `main`; los comandos son `npm ci` y `npm start`.
+3. Configurar `DATABASE_URL` con la cadena de conexión de Supabase.
+4. Configurar `CORS_ORIGINS` con los dominios web publicados, separados por comas.
+5. Usar `/api/health` como health check.
+
+La app móvil debe usar la URL pública con el prefijo `/api`, por ejemplo:
+`https://foco-backend.onrender.com/api`.
+
+No subir nunca `.env`; los secretos deben configurarse en el panel de Render.
