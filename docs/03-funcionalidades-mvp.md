@@ -2,7 +2,7 @@
 
 ## 1. Visión General del Producto
 
-La interfaz de Mente está organizada en **vistas anidadas** que respetan la jerarquía del método P.A.R.A.:
+La interfaz de FOCO está organizada en **vistas anidadas** que respetan la jerarquía del método P.A.R.A.:
 
 ```
 Panel General (Vista de Ojo de Halcón)
@@ -121,7 +121,7 @@ El corazón de la aplicación. Un **canvas infinito** donde conviven 4 tipos de 
 ### 5.4 Conectores Visuales (Flechas)
 
 - El usuario hace **clic en el borde** de un bloque y **estira una flecha** hasta otro bloque
-- Vincula visualmente reflexiones con sus fuentes de origen
+- Vincula visualfoco reflexiones con sus fuentes de origen
 - Las relaciones se persisten en la base de datos como vínculos entre entidades
 
 ---
@@ -138,7 +138,7 @@ El corazón de la aplicación. Un **canvas infinito** donde conviven 4 tipos de 
 
 ### 6.2 Automatización de Rutinas (Tareas Recurrentes)
 
-- Configuración para que ciertas tareas del checklist vuelvan a aparecer automáticamente
+- Configuración para que ciertas tareas del checklist vuelvan a aparecer automáticafoco
 - Ejemplos:
   - "Revisar y vaciar el Inbox" — todos los días a las 20:00
   - "Planificar la semana" — cada domingo
@@ -168,7 +168,7 @@ El corazón de la aplicación. Un **canvas infinito** donde conviven 4 tipos de 
   - URLs de referencias
   - Nombres de proyectos y áreas
 - Resultados agrupados por tipo de entidad
-- Al hacer clic → navega directamente a la vista correspondiente
+- Al hacer clic → navega directafoco a la vista correspondiente
 
 ### Módulo de Archivo
 

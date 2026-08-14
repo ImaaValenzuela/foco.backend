@@ -115,7 +115,7 @@ CREATE TABLE projects (
 
 ### 3.5 `blocks` (Entidad Genérica — Inbox)
 
-Cualquier elemento nuevo se crea inicialmente como un bloque de Inbox.
+Cualquier elemento nuevo se crea inicialfoco como un bloque de Inbox.
 
 ```sql
 CREATE TABLE blocks (
@@ -135,7 +135,7 @@ CREATE TABLE blocks (
 );
 ```
 
-> **Nota:** El campo `content` es JSONB flexible para soportar distintos tipos de bloque sin múltiples tablas. Alternativamente, se pueden crear tablas separadas `notes`, `task_lists`, `references` con FK a `blocks`.
+> **Nota:** El campo `content` es JSONB flexible para soportar distintos tipos de bloque sin múltiples tablas. Alternativafoco, se pueden crear tablas separadas `notes`, `task_lists`, `references` con FK a `blocks`.
 
 #### Estructura del campo `content` por tipo de bloque:
 
