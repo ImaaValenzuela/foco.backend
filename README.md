@@ -1,5 +1,9 @@
 # ⚙️ Mente — Backend API (`mente-backend`)
 
+## Flujo de ramas
+
+`main` es producción y despliegue; `develop` es integración/staging. Cada funcionalidad nace desde `develop` en una rama `feat/...`, `fix/...` o equivalente y su PR apunta a `develop`. Los releases se promueven de `develop` a `main`.
+
 Este repositorio contiene el servidor de la API RESTful de **Mente**, encargado de las reglas de negocio, seguridad, persistencia de datos, integraciones con IA y la pasarela de pagos.
 
 ---
