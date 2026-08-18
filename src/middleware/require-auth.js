@@ -1,5 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
-const pool = require('../db');
+const { ensureProfile } = require('../services/profileService');
 
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
@@ -20,11 +20,9 @@ async function requireAuth(req, res, next) {
   }
 
   req.user = data.user;
-  const profile = await pool.query(
-    'SELECT id FROM users WHERE id = $1 OR email = $2 LIMIT 1',
-    [data.user.id, data.user.email]
-  );
-  req.user.profileId = profile.rows[0]?.id || data.user.id;
+  const profile = await ensureProfile(data.user);
+  req.user.profileId = profile.id;
+  req.user.profile = profile;
   return next();
 }
 
