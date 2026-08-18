@@ -27,21 +27,24 @@ async function obtenerBlockPorId(id) {
   return res.rows[0];
 }
 
-async function actualizarBlock(id, { type, content }) {
+async function actualizarBlock(id, userId, { type, content }) {
   const res = await pool.query(
     `UPDATE blocks
      SET type = COALESCE($2, type),
          content = COALESCE($3, content),
          updated_at = NOW()
-     WHERE id = $1
+      WHERE id = $1 AND user_id = $4
      RETURNING id, user_id, type, content, updated_at`,
-    [id, type, content]
+    [id, type, content, userId]
   );
   return res.rows[0];
 }
 
-async function eliminarBlock(id) {
-  const res = await pool.query(`DELETE FROM blocks WHERE id = $1 RETURNING id`, [id]);
+async function eliminarBlock(id, userId) {
+  const res = await pool.query(
+    `DELETE FROM blocks WHERE id = $1 AND user_id = $2 RETURNING id, user_id`,
+    [id, userId]
+  );
   return res.rows[0];
 }
 

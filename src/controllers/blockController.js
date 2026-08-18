@@ -2,11 +2,11 @@ const blockService = require('../services/blockService');
 
 async function crear(req, res) {
   try {
-    const { user_id, type, content } = req.body;
-    if (!user_id || !type) {
-      return res.status(400).json({ error: 'user_id y type son requeridos' });
+    const { type, content } = req.body;
+    if (!type) {
+      return res.status(400).json({ error: 'type es requerido' });
     }
-    const block = await blockService.crearBlock(user_id, type, content);
+    const block = await blockService.crearBlock(req.user.profileId, type, content);
     res.status(201).json(block);
   } catch (error) {
     console.error(error);
@@ -16,7 +16,10 @@ async function crear(req, res) {
 
 async function obtenerTodos(req, res) {
   try {
-    const blocks = await blockService.obtenerBlocksPorUsuario(req.params.userId);
+    if (![req.user.id, String(req.user.profileId)].includes(req.params.userId)) {
+      return res.status(403).json({ error: 'No puedes acceder a notas de otro usuario' });
+    }
+    const blocks = await blockService.obtenerBlocksPorUsuario(req.user.profileId);
     res.json(blocks);
   } catch (error) {
     console.error(error);
@@ -29,6 +32,9 @@ async function obtenerPorId(req, res) {
     const block = await blockService.obtenerBlockPorId(req.params.id);
     if (!block) {
       return res.status(404).json({ error: 'Block no encontrado' });
+    }
+    if (block.user_id !== req.user.profileId) {
+      return res.status(403).json({ error: 'No puedes acceder a esta nota' });
     }
     res.json(block);
   } catch (error) {
@@ -49,7 +55,7 @@ async function obtenerBlocks(req, res) {
 
 async function actualizar(req, res) {
   try {
-    const block = await blockService.actualizarBlock(req.params.id, req.body);
+    const block = await blockService.actualizarBlock(req.params.id, req.user.profileId, req.body);
     if (!block) {
       return res.status(404).json({ error: 'Block no encontrado' });
     }
@@ -62,7 +68,7 @@ async function actualizar(req, res) {
 
 async function eliminar(req, res) {
   try {
-    const result = await blockService.eliminarBlock(req.params.id);
+    const result = await blockService.eliminarBlock(req.params.id, req.user.profileId);
     if (!result) {
       return res.status(404).json({ error: 'Block no encontrado' });
     }
