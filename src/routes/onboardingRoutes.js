@@ -2,6 +2,9 @@ const express = require('express');
 const router = express.Router();
 
 const onboardingController = require('../controllers/onboardingController');
+const { requireAuth } = require('../middleware/require-auth');
+
+router.use(requireAuth);
 
 router.post('/', onboardingController.crear);
 router.get('/user/:userId', onboardingController.obtenerPorUsuario);

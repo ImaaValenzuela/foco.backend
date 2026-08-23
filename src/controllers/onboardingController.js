@@ -2,11 +2,7 @@ const onboardingService = require('../services/onboardingService');
 
 async function crear(req, res) {
   try {
-    const { user_id } = req.body;
-    if (!user_id) {
-      return res.status(400).json({ error: 'user_id es requerido' });
-    }
-    const perfil = await onboardingService.crearOnboarding(user_id, req.body);
+    const perfil = await onboardingService.crearOnboarding(req.user.profileId, req.body);
     res.status(201).json(perfil);
   } catch (error) {
     console.error(error);
@@ -16,7 +12,10 @@ async function crear(req, res) {
 
 async function obtenerPorUsuario(req, res) {
   try {
-    const perfiles = await onboardingService.obtenerOnboardingPorUsuario(req.params.userId);
+    if (![req.user.id, String(req.user.profileId)].includes(req.params.userId)) {
+      return res.status(403).json({ error: 'No puedes acceder a otro onboarding' });
+    }
+    const perfiles = await onboardingService.obtenerOnboardingPorUsuario(req.user.profileId);
     res.json(perfiles);
   } catch (error) {
     console.error(error);
