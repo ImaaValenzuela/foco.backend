@@ -19,6 +19,17 @@ async function crearOnboarding(user_id, data) {
        routine_hours_daily, interests, mot_create_habits, mot_avoid_dispersion,
        mot_organization, mot_reduce_fatigue)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     ON CONFLICT (user_id) DO UPDATE SET
+       study_hours_daily = EXCLUDED.study_hours_daily,
+       work_hours_daily = EXCLUDED.work_hours_daily,
+       leisure_hours_daily = EXCLUDED.leisure_hours_daily,
+       routine_hours_daily = EXCLUDED.routine_hours_daily,
+       interests = EXCLUDED.interests,
+       mot_create_habits = EXCLUDED.mot_create_habits,
+       mot_avoid_dispersion = EXCLUDED.mot_avoid_dispersion,
+       mot_organization = EXCLUDED.mot_organization,
+       mot_reduce_fatigue = EXCLUDED.mot_reduce_fatigue,
+       completed_at = NOW()
      RETURNING *`,
     [
       user_id,
