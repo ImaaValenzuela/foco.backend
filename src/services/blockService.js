@@ -4,6 +4,8 @@ async function crearBlock(user_id, type, content) {
   const res = await pool.query(
     `INSERT INTO blocks (user_id, type, content)
      VALUES ($1, $2, $3)
+     ON CONFLICT ON CONSTRAINT unique_user_block_type
+     DO UPDATE SET content = EXCLUDED.content, updated_at = NOW()
      RETURNING id, user_id, type, content, updated_at`,
     [user_id, type, content || {}]
   );

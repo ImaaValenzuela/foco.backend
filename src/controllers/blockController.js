@@ -10,6 +10,9 @@ async function crear(req, res) {
     res.status(201).json(block);
   } catch (error) {
     console.error(error);
+    if (error.code === '23505' && error.constraint === 'unique_user_block_type') {
+      return res.status(409).json({ error: 'Ya existe un block de este tipo para el usuario' });
+    }
     res.status(500).json({ error: 'Error interno al crear el block' });
   }
 }
