@@ -7,6 +7,7 @@ const { requireAuth } = require('../middleware/require-auth');
 router.use(requireAuth);
 
 router.post('/', blockController.crear);
+router.get('/', blockController.obtenerMios);
 router.get('/user/:userId', blockController.obtenerTodos);
 router.get('/:id', blockController.obtenerPorId);
 router.put('/:id', blockController.actualizar);

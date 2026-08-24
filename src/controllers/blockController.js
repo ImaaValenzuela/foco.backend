@@ -30,6 +30,16 @@ async function obtenerTodos(req, res) {
   }
 }
 
+async function obtenerMios(req, res) {
+  try {
+    const blocks = await blockService.obtenerBlocksPorUsuario(req.user.profileId);
+    res.json(blocks);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error interno al obtener los blocks' });
+  }
+}
+
 async function obtenerPorId(req, res) {
   try {
     const block = await blockService.obtenerBlockPorId(req.params.id);
@@ -82,4 +92,4 @@ async function eliminar(req, res) {
   }
 }
 
-module.exports = { crear, obtenerTodos, obtenerPorId, obtenerBlocks, actualizar, eliminar };
+module.exports = { crear, obtenerTodos, obtenerMios, obtenerPorId, obtenerBlocks, actualizar, eliminar };

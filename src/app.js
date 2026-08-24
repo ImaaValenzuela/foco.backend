@@ -10,7 +10,7 @@ app.disable('x-powered-by');
 
 const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:5173,http://localhost:8081')
   .split(',')
-  .map((origin) => origin.trim())
+  .map((origin) => origin.trim().replace(/\/$/, ''))
   .filter(Boolean);
 
 app.use(
@@ -35,6 +35,8 @@ app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/habits', require('./routes/habitRoutes'));
 app.use('/api/habit-logs', require('./routes/habitLogRoutes'));
 app.use('/api/blocks', require('./routes/blockRoutes'));
+// Mantiene compatibilidad con clientes que todavía no incluyen el prefijo /api.
+app.use('/blocks', require('./routes/blockRoutes'));
 app.use('/api/onboarding', require('./routes/onboardingRoutes'));
 app.use('/api/auth', require('./routes/authRoutes'));
 

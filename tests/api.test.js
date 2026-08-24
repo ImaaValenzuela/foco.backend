@@ -13,6 +13,10 @@ jest.mock('../src/services/profileService', () => ({
   ensureProfile: jest.fn(),
 }));
 
+jest.mock('../src/services/blockService', () => ({
+  obtenerBlocksPorUsuario: jest.fn(),
+}));
+
 process.env.SUPABASE_URL = 'https://example.supabase.co';
 process.env.SUPABASE_ANON_KEY = 'test-key';
 
@@ -20,6 +24,7 @@ const request = require('supertest');
 const pool = require('../src/db');
 const { createClient } = require('@supabase/supabase-js');
 const { ensureProfile } = require('../src/services/profileService');
+const blockService = require('../src/services/blockService');
 const app = require('../src/app');
 const auth = createClient.mock.results[0].value.auth;
 
@@ -28,6 +33,7 @@ describe('API', () => {
     pool.query.mockReset();
     auth.getUser.mockReset();
     ensureProfile.mockReset();
+    blockService.obtenerBlocksPorUsuario.mockReset();
   });
 
   test('GET /api/health returns the API and database status', async () => {
@@ -114,5 +120,22 @@ describe('API', () => {
 
     expect(response.status).toBe(403);
     expect(response.body).toEqual({ error: 'No puedes acceder a otro onboarding' });
+  });
+
+  test('GET /blocks returns blocks for the authenticated profile', async () => {
+    const user = { id: 'auth-user-1', email: 'user@example.com', user_metadata: {} };
+    const profile = { id: 'profile-1', email: user.email };
+    const blocks = [{ id: 'block-1', user_id: profile.id, type: 'note' }];
+    auth.getUser.mockResolvedValueOnce({ data: { user }, error: null });
+    ensureProfile.mockResolvedValueOnce(profile);
+    blockService.obtenerBlocksPorUsuario.mockResolvedValueOnce(blocks);
+
+    const response = await request(app)
+      .get('/blocks')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(blocks);
+    expect(blockService.obtenerBlocksPorUsuario).toHaveBeenCalledWith(profile.id);
   });
 });
