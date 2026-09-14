@@ -38,6 +38,9 @@ app.use('/api/blocks', require('./routes/blockRoutes'));
 app.use('/api/onboarding', require('./routes/onboardingRoutes'));
 app.use('/api/auth', require('./routes/authRoutes'));
 
+// RUTA DE INGESTA RAG
+app.use('/api/ingest', require('./routes/ingestRoutes'));
+
 const pool = require('./db');
 
 app.get('/api/health', async (req, res) => {
