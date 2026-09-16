@@ -5,3 +5,10 @@ dist
 .env.*
 !.env.example
 .DS_Store
+
+__pycache__/
+venv/
+env/
+.env_python/
+.pytest_cache/
+
