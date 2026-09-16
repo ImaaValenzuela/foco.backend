@@ -1,8 +1,6 @@
 const pool = require('../db');
 
-// Recibe embeddingArray como tercer parámetro, por defecto null por si hay fallos o viene vacío
 async function crearHabit(user_id, name, embeddingArray = null) {
-    // Transforma el array de JS a formato string para que pgvector lo interprete correctamente
     const embeddingString = embeddingArray ? JSON.stringify(embeddingArray) : null;
 
     const res = await pool.query(
@@ -14,7 +12,6 @@ async function crearHabit(user_id, name, embeddingArray = null) {
     return res.rows[0];
 }
 
-// En los SELECT no devolvemos la columna embedding para no sobrecargar las respuestas al frontend
 async function obtenerHabitsPorUsuario(user_id) {
     const res = await pool.query(
         `SELECT id, user_id, name, created_at
@@ -32,7 +29,6 @@ async function obtenerHabitPorId(id) {
     return res.rows[0];
 }
 
-// Se añade soporte opcional para actualizar el embedding si el usuario edita el nombre del hábito
 async function actualizarHabit(id, name, embeddingArray = null) {
     if (embeddingArray) {
         const embeddingString = JSON.stringify(embeddingArray);
@@ -57,10 +53,27 @@ async function eliminarHabit(id) {
     return res.rows[0];
 }
 
+async function obtenerHabitosSinVector(user_id) {
+    const res = await pool.query(
+        `SELECT id, name FROM habits WHERE user_id = $1 AND embedding IS NULL`,
+        [user_id]
+    );
+    return res.rows;
+}
+
+async function guardarVectorHabito(id, embeddingArray) {
+    await pool.query(
+        `UPDATE habits SET embedding = $1 WHERE id = $2`,
+        [JSON.stringify(embeddingArray), id]
+    );
+}
+
 module.exports = {
     crearHabit,
     obtenerHabitsPorUsuario,
     obtenerHabitPorId,
     actualizarHabit,
     eliminarHabit,
+    obtenerHabitosSinVector,
+    guardarVectorHabito
 };
