@@ -2,41 +2,28 @@ const pomodoroService = require('../services/pomodoroService');
 // Importamos el servicio que orquestará la llamada al microservicio Python (Fase 3)
 const inferenceService = require('../services/inferenceService'); 
 
-/**
- * Crea un registro de sesión Pomodoro y dispara la evaluación de IA en segundo plano.
- */
 async function crear(req, res) {
   try {
-    // 1. Recepción de parámetros según el Diccionario de Datos
-    // Valores por defecto: focus 25, break 5, is_completed true
     const { 
       focus_duration = 25, 
       break_duration = 5, 
       is_completed = true 
     } = req.body;
     
-    // Asumimos que el middleware require-auth.js inyecta el user en req
     const user_id = req.user.id; 
 
-    // 2. Persistencia en PostgreSQL (Supabase)
+    // 1. Persistencia en BBDD (Esto ya está funcionando bien)
     const session = await pomodoroService.crearSession(
-      user_id, 
-      focus_duration, 
-      break_duration, 
-      is_completed
+      user_id, focus_duration, break_duration, is_completed
     );
 
-    // 3. Disparador del Motor de Inferencia (Fire-and-Forget) (FASE 3)
-    // Ejecutamos la promesa SIN 'await' para no bloquear el Event Loop ni la respuesta al Frontend.
-    // Esto evalúa reglas como F_DISP_POMODORO_ABANDONO o F_FAT_POMODORO_SOBRE_ENFOQUE
-    inferenceService.evaluarReglasPomodoro(user_id, session.id)
+    // 2. CORRECCIÓN: Llamamos a la nueva función Omnicanal
+    inferenceService.evaluarEstadoGlobal(user_id, 'pomodoro', session.id)
       .catch(err => {
-        // Circuit Breaker: Si Python falla o tarda más de 1500ms, el error muere aquí 
-        // y no afecta la experiencia del usuario.
-        console.error('Fallo silencioso en Evaluación de IA (Pomodoro):', err.message);
+        console.warn('Fallo silencioso en IA:', err.message);
       });
 
-    // 4. Respuesta inmediata y ligera al Frontend
+    // 3. Respuesta al frontend (Ahora sí llegará al cliente)
     res.status(201).json(session);
 
   } catch (error) {
