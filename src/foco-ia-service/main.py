@@ -1,8 +1,20 @@
 import re
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from contextlib import asynccontextmanager
+from sentence_transformers import SentenceTransformer
 
-app = FastAPI(title="F.O.C.O. NLP Engine (Regex Avanzado)")
+# Variables globales para el Modelo SBERT
+sbert_model = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global sbert_model
+    # Se carga el modelo multilenguaje en memoria al iniciar el servidor
+    sbert_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+    yield
+
+app = FastAPI(title="F.O.C.O. NLP Engine (Regex Avanzado + Vectorización)", lifespan=lifespan)
 
 class IngestRequest(BaseModel):
     text: str
@@ -12,6 +24,12 @@ class ClassificationResponse(BaseModel):
     targetBlock: str
     action: str
     extractedData: dict
+
+class VectorizeRequest(BaseModel):
+    text: str
+
+class VectorizeResponse(BaseModel):
+    embedding: list[float]
 
 @app.post("/classify", response_model=ClassificationResponse)
 async def classify_text(request: IngestRequest):
@@ -86,3 +104,17 @@ async def classify_text(request: IngestRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Endpoint exclusivo de vectorización
+@app.post("/vectorize", response_model=VectorizeResponse)
+async def vectorize_text(request: VectorizeRequest):
+    if sbert_model is None:
+        raise HTTPException(status_code=500, detail="El modelo SBERT no está inicializado.")
+    
+    try:
+        # Codificamos el texto limpio a un vector denso de 384 dimensiones
+        vector = sbert_model.encode(request.text).tolist()
+        return VectorizeResponse(embedding=vector)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en vectorización: {str(e)}")
