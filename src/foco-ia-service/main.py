@@ -1,6 +1,8 @@
 import re
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from typing import Optional, Dict, Any, List
+from rules_engine import RuleEngine
 from contextlib import asynccontextmanager
 from sentence_transformers import SentenceTransformer
 
@@ -118,3 +120,32 @@ async def vectorize_text(request: VectorizeRequest):
         return VectorizeResponse(embedding=vector)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en vectorización: {str(e)}")
+
+# Instanciamos el motor de reglas en memoria
+rule_engine = RuleEngine()
+
+# --- ESQUEMAS PARA LA FASE 3 ---
+class SnapshotRequest(BaseModel):
+    user_id: str
+    associated_pomodoro_id: Optional[str] = None
+    snap_motivations: Dict[str, bool]
+    snap_interests: List[str]
+    snap_routine: Dict[str, int]
+    snap_blocks_content: List[Dict[str, Any]]
+    snap_habits_metrics: Dict[str, Any]
+
+class InferenceResponse(BaseModel):
+    triggered: bool
+    rule_id: Optional[str] = None
+    action_taken: Optional[str] = None
+    suggested_message: Optional[str] = None
+
+# --- ENDPOINT FASE 3: EVALUADOR IF-THEN ---
+@app.post("/evaluate-rules", response_model=InferenceResponse)
+async def evaluate_rules(request: SnapshotRequest):
+    try:
+        # El motor procesa los diccionarios estáticos y dinámicos (O(1) / O(N) muy bajo)
+        result = rule_engine.evaluate(request)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en motor de inferencia: {str(e)}")

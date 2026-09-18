@@ -37,6 +37,7 @@ app.use('/api/habit-logs', require('./routes/habitLogRoutes'));
 app.use('/api/blocks', require('./routes/blockRoutes'));
 app.use('/api/onboarding', require('./routes/onboardingRoutes'));
 app.use('/api/auth', require('./routes/authRoutes'));
+const pomodoroRoutes = require('./routes/pomodoroRoutes');
 
 // RUTA DE INGESTA RAG
 app.use('/api/ingest', require('./routes/ingestRoutes'));
@@ -60,5 +61,7 @@ app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: 'Error interno del servidor' });
 });
+
+app.use('/api/pomodoros', pomodoroRoutes);
 
 module.exports = app;
