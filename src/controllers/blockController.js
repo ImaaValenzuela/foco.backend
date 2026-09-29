@@ -1,8 +1,77 @@
+const crypto = require('crypto');
 const blockService = require('../services/blockService');
 const inferenceService = require('../services/inferenceService');
 
+function validarYSanitizarContent(content) {
+  if (!content || typeof content !== 'object') {
+    return { notes: [], connections: [] };
+  }
+
+  const contentLimpio = { ...content };
+
+  if (Array.isArray(contentLimpio.notes)) {
+    contentLimpio.notes = contentLimpio.notes.map(note => {
+      if (!note || typeof note !== 'object') return null;
+
+      const esLista = note.type === 'list' || Array.isArray(note.items);
+      const itemsLimpios = Array.isArray(note.items)
+        ? note.items.map(item => ({
+            id: item.id || crypto.randomUUID(),
+            text: String(item.text || '').trim(),
+            checked: Boolean(item.checked)
+          }))
+        : [];
+
+      let textoPlano = note.text ? String(note.text).trim() : '';
+      if (esLista && !textoPlano) {
+        textoPlano = [note.title, ...itemsLimpios.map(i => i.text)].filter(Boolean).join(' - ');
+      }
+
+      return {
+        id: note.id || crypto.randomUUID(),
+        title: note.title ? String(note.title).trim() : null,
+        text: textoPlano,
+        type: esLista ? 'list' : (note.type || 'note'),
+        isTask: Boolean(note.isTask),
+        checked: Boolean(note.checked),
+        items: itemsLimpios,
+        createdAt: note.createdAt || new Date().toISOString(),
+        ...(note.embedding ? { embedding: note.embedding } : {})
+      };
+    }).filter(Boolean);
+  } else {
+    contentLimpio.notes = [];
+  }
+
+  if (Array.isArray(contentLimpio.connections)) {
+    contentLimpio.connections = contentLimpio.connections.map(conn => {
+      if (!conn || typeof conn !== 'object' || !conn.sourceId || !conn.targetId) return null;
+      return {
+        id: conn.id || crypto.randomUUID(),
+        sourceId: String(conn.sourceId),
+        targetId: String(conn.targetId),
+        sourceBlockId: conn.sourceBlockId ? String(conn.sourceBlockId) : null,
+        targetBlockId: conn.targetBlockId ? String(conn.targetBlockId) : null,
+        label: conn.label ? String(conn.label) : undefined,
+        createdAt: conn.createdAt || new Date().toISOString()
+      };
+    }).filter(Boolean);
+  } else {
+    contentLimpio.connections = [];
+  }
+
+  return contentLimpio;
+}
+
 async function inyectarVectoresFaltantes(content) {
+  if (process.env.NODE_ENV === 'test' || !process.env.IA_SERVICE_URL) return;
   if (content && Array.isArray(content.notes)) {
+    content.notes.forEach(note => {
+      if (note.type === 'list' && Array.isArray(note.items) && !note.text) {
+        note.text = [note.title, ...note.items.map(i => i.text)].filter(Boolean).join(' - ');
+      }
+    });
+
     const notasParaVectorizar = content.notes.filter(note => note.text && !note.embedding);
     
     if (notasParaVectorizar.length > 0) {
@@ -70,22 +139,28 @@ async function crear(req, res) {
     const { type, content } = req.body;
     if (!type) return res.status(400).json({ error: 'type es requerido' });
     
-    await inyectarVectoresFaltantes(content);
-    const block = await blockService.crearBlock(req.user.profileId, type, content);
+    const contentSanitizado = validarYSanitizarContent(content);
+    await inyectarVectoresFaltantes(contentSanitizado);
+    const block = await blockService.crearBlock(req.user.profileId, type, contentSanitizado);
     
     // DISPARADOR IA (Fire-and-Forget)
     inferenceService.evaluarEstadoGlobal(req.user.profileId, 'block', block.id).catch(()=>{});
 
     res.status(201).json(sanitizarBloqueParaFrontend(block));
   } catch (error) {
-    // ... tu manejo de error original 409/500
+    console.error(error);
+    res.status(500).json({ error: 'Error interno al crear el block' });
   }
 }
 
 async function actualizar(req, res) {
   try {
-    await inyectarVectoresFaltantes(req.body.content);
-    const block = await blockService.actualizarBlock(req.params.id, req.user.profileId, req.body);
+    const updatePayload = { type: req.body.type };
+    if (req.body.content !== undefined) {
+      updatePayload.content = validarYSanitizarContent(req.body.content);
+      await inyectarVectoresFaltantes(updatePayload.content);
+    }
+    const block = await blockService.actualizarBlock(req.params.id, req.user.profileId, updatePayload);
     if (!block) return res.status(404).json({ error: 'Block no encontrado' });
 
     // DISPARADOR IA (Fire-and-Forget)
@@ -93,6 +168,7 @@ async function actualizar(req, res) {
 
     res.json(sanitizarBloqueParaFrontend(block));
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Error interno al actualizar el block' });
   }
 }

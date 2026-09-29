@@ -115,4 +115,46 @@ describe('API', () => {
     expect(response.status).toBe(403);
     expect(response.body).toEqual({ error: 'No puedes acceder a otro onboarding' });
   });
+
+  test('creates a block with lists and arrow connections in content', async () => {
+    const user = { id: 'auth-user-1', email: 'user@example.com', user_metadata: {} };
+    const profile = { id: 'profile-1', email: user.email };
+    auth.getUser.mockResolvedValueOnce({ data: { user }, error: null });
+    ensureProfile.mockResolvedValueOnce(profile);
+
+    const mockCreatedBlock = {
+      id: 'block-1',
+      user_id: profile.id,
+      type: 'active_objectives',
+      content: {
+        notes: [
+          {
+            id: 'list-1',
+            title: 'Mis tareas',
+            type: 'list',
+            items: [{ id: 'item-1', text: 'Paso 1', checked: false }]
+          }
+        ],
+        connections: [
+          { id: 'conn-1', sourceId: 'list-1', targetId: 'note-2' }
+        ]
+      },
+      updated_at: '2026-09-29T20:00:00Z'
+    };
+
+    pool.query.mockResolvedValueOnce({ rows: [mockCreatedBlock] });
+
+    const response = await request(app)
+      .post('/api/blocks')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        type: 'active_objectives',
+        content: mockCreatedBlock.content
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.content.notes[0].type).toBe('list');
+    expect(response.body.content.connections).toHaveLength(1);
+    expect(pool.query).toHaveBeenCalled();
+  });
 });
