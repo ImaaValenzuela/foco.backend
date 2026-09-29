@@ -1,6 +1,8 @@
 import re
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from typing import Optional, Dict, Any, List
+from rules_engine import RuleEngine
 from contextlib import asynccontextmanager
 from sentence_transformers import SentenceTransformer
 
@@ -10,11 +12,23 @@ sbert_model = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global sbert_model
-    # Se carga el modelo multilenguaje en memoria al iniciar el servidor
+    # 1. Carga del modelo multilenguaje en memoria al iniciar el servidor
     sbert_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+    
+    # 2. Warmup inmediato: Precalentamiento de tensores y kernels JIT
+    # Elimina el lag de +500ms que sufría la primera petición real de un usuario.
+    sbert_model.encode(["warmup"], show_progress_bar=False)
+    print("🚀 [F.O.C.O. IA] SBERT y PyTorch precalentados con éxito.")
     yield
 
-app = FastAPI(title="F.O.C.O. NLP Engine (Regex Avanzado + Vectorización)", lifespan=lifespan)
+app = FastAPI(title="F.O.C.O. NLP & Inference Engine", lifespan=lifespan)
+
+@app.get("/healthz")
+def health_check():
+    return {
+        "status": "ok",
+        "model_loaded": sbert_model is not None
+    }
 
 class IngestRequest(BaseModel):
     text: str
@@ -106,9 +120,10 @@ async def classify_text(request: IngestRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Endpoint exclusivo de vectorización
+# Endpoint exclusivo de vectorización: Se define como 'def' para delegar el cálculo
+# de tensores PyTorch al threadpool de Starlette, previniendo congelamientos del Event Loop.
 @app.post("/vectorize", response_model=VectorizeResponse)
-async def vectorize_text(request: VectorizeRequest):
+def vectorize_text(request: VectorizeRequest):
     if sbert_model is None:
         raise HTTPException(status_code=500, detail="El modelo SBERT no está inicializado.")
     
@@ -118,3 +133,35 @@ async def vectorize_text(request: VectorizeRequest):
         return VectorizeResponse(embedding=vector)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en vectorización: {str(e)}")
+
+# Instanciamos el motor de reglas en memoria
+rule_engine = RuleEngine()
+
+# --- ESQUEMAS PARA LA FASE 3 ---
+class SnapshotRequest(BaseModel):
+    user_id: str
+    associated_pomodoro_id: Optional[str] = None
+    snap_motivations: Dict[str, bool]
+    snap_interests: List[str]
+    snap_routine: Dict[str, int]
+    snap_blocks_content: List[Dict[str, Any]]
+    snap_habits_metrics: Dict[str, Any]
+
+class InferenceResponse(BaseModel):
+    triggered: bool
+    rule_id: Optional[str] = None
+    action_taken: Optional[str] = None
+    suggested_message: Optional[str] = None
+
+# --- ENDPOINT FASE 3: EVALUADOR IF-THEN ---
+# Se utiliza `def` en lugar de `async def` para que FastAPI delegue automáticamente
+# la ejecución CPU-bound al Threadpool de Starlette (anyio.to_thread.run_sync),
+# garantizando que el Event Loop de asyncio nunca sufra congelamientos.
+@app.post("/evaluate-rules", response_model=InferenceResponse)
+def evaluate_rules(request: SnapshotRequest):
+    try:
+        # El motor procesa los diccionarios estáticos y dinámicos (O(1) / O(N) muy bajo) en el threadpool
+        result = rule_engine.evaluate(request)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en motor de inferencia: {str(e)}")

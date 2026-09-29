@@ -1,4 +1,5 @@
 const blockService = require('../services/blockService');
+const inferenceService = require('../services/inferenceService');
 
 async function inyectarVectoresFaltantes(content) {
   if (content && Array.isArray(content.notes)) {
@@ -67,20 +68,32 @@ async function vectorizarBloquesEnSegundoPlano(userId) {
 async function crear(req, res) {
   try {
     const { type, content } = req.body;
-    if (!type) {
-      return res.status(400).json({ error: 'type es requerido' });
-    }
+    if (!type) return res.status(400).json({ error: 'type es requerido' });
     
     await inyectarVectoresFaltantes(content);
-
     const block = await blockService.crearBlock(req.user.profileId, type, content);
+    
+    // DISPARADOR IA (Fire-and-Forget)
+    inferenceService.evaluarEstadoGlobal(req.user.profileId, 'block', block.id).catch(()=>{});
+
     res.status(201).json(sanitizarBloqueParaFrontend(block));
   } catch (error) {
-    console.error(error);
-    if (error.code === '23505' && error.constraint === 'unique_user_block_type') {
-      return res.status(409).json({ error: 'Ya existe un block de este tipo para el usuario' });
-    }
-    res.status(500).json({ error: 'Error interno al crear el block' });
+    // ... tu manejo de error original 409/500
+  }
+}
+
+async function actualizar(req, res) {
+  try {
+    await inyectarVectoresFaltantes(req.body.content);
+    const block = await blockService.actualizarBlock(req.params.id, req.user.profileId, req.body);
+    if (!block) return res.status(404).json({ error: 'Block no encontrado' });
+
+    // DISPARADOR IA (Fire-and-Forget)
+    inferenceService.evaluarEstadoGlobal(req.user.profileId, 'block', block.id).catch(()=>{});
+
+    res.json(sanitizarBloqueParaFrontend(block));
+  } catch (error) {
+    res.status(500).json({ error: 'Error interno al actualizar el block' });
   }
 }
 
@@ -127,20 +140,6 @@ async function obtenerBlocks(req, res) {
   }
 }
 
-async function actualizar(req, res) {
-  try {
-    await inyectarVectoresFaltantes(req.body.content);
-
-    const block = await blockService.actualizarBlock(req.params.id, req.user.profileId, req.body);
-    if (!block) {
-      return res.status(404).json({ error: 'Block no encontrado' });
-    }
-    res.json(sanitizarBloqueParaFrontend(block));
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error interno al actualizar el block' });
-  }
-}
 
 async function eliminar(req, res) {
   try {

@@ -1,16 +1,34 @@
 const habitLogService = require('../services/habitLogService');
+const inferenceService = require('../services/inferenceService'); 
 
 async function crear(req, res) {
   try {
     const { habit_id, logged_date, is_completed } = req.body;
-    if (!habit_id || !logged_date) {
-      return res.status(400).json({ error: 'habit_id y logged_date son requeridos' });
-    }
+    if (!habit_id || !logged_date) return res.status(400).json({ error: 'Requeridos' });
+    
     const log = await habitLogService.crearHabitLog(habit_id, logged_date, is_completed);
+    
+    // DISPARADOR IA (Fire-and-Forget)
+    inferenceService.evaluarEstadoGlobal(req.user.id, 'habit', log.id).catch(()=>{});
+
     res.status(201).json(log);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error interno al crear el log' });
+    res.status(500).json({ error: 'Error interno' });
+  }
+}
+
+async function actualizar(req, res) {
+  try {
+    const { is_completed } = req.body;
+    const log = await habitLogService.actualizarHabitLog(req.params.id, is_completed);
+    if (!log) return res.status(404).json({ error: 'Log no encontrado' });
+
+    // DISPARADOR IA (Fire-and-Forget)
+    inferenceService.evaluarEstadoGlobal(req.user.id, 'habit', log.id).catch(()=>{});
+
+    res.json(log);
+  } catch (error) {
+    res.status(500).json({ error: 'Error interno' });
   }
 }
 
@@ -34,20 +52,6 @@ async function obtenerPorId(req, res) {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error interno al obtener el log' });
-  }
-}
-
-async function actualizar(req, res) {
-  try {
-    const { is_completed } = req.body;
-    const log = await habitLogService.actualizarHabitLog(req.params.id, is_completed);
-    if (!log) {
-      return res.status(404).json({ error: 'Log no encontrado' });
-    }
-    res.json(log);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error interno al actualizar el log' });
   }
 }
 
