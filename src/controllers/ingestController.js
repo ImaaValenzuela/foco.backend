@@ -126,7 +126,8 @@ async function processIngestion(req, res) {
         id: crypto.randomUUID(),
         text: extractedData.text,
         title: null,
-        isTask: extractedData.isTask,
+        type: extractedData.isTask ? 'task' : 'note',
+        isTask: Boolean(extractedData.isTask),
         checked: false,
         createdAt: new Date().toISOString(),
         embedding: vectorData // <- Nuevo campo añadido directamente al objeto JSON

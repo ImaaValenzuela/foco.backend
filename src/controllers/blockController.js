@@ -13,28 +13,57 @@ function validarYSanitizarContent(content) {
     contentLimpio.notes = contentLimpio.notes.map(note => {
       if (!note || typeof note !== 'object') return null;
 
-      const esLista = note.type === 'list' || Array.isArray(note.items);
-      const itemsLimpios = Array.isArray(note.items)
-        ? note.items.map(item => ({
-            id: item.id || crypto.randomUUID(),
-            text: String(item.text || '').trim(),
-            checked: Boolean(item.checked)
-          }))
-        : [];
+      const esTarea = note.type === 'task' || Boolean(note.isTask);
+      const esLista = !esTarea && (note.type === 'list' || (Array.isArray(note.items) && note.items.length > 0 && note.type !== 'note'));
 
       let textoPlano = note.text ? String(note.text).trim() : '';
-      if (esLista && !textoPlano) {
-        textoPlano = [note.title, ...itemsLimpios.map(i => i.text)].filter(Boolean).join(' - ');
+
+      if (esTarea) {
+        return {
+          id: note.id || crypto.randomUUID(),
+          title: note.title ? String(note.title).trim() : null,
+          text: textoPlano,
+          type: 'task',
+          isTask: true,
+          checked: Boolean(note.checked),
+          createdAt: note.createdAt || new Date().toISOString(),
+          ...(note.embedding ? { embedding: note.embedding } : {})
+        };
+      }
+
+      if (esLista) {
+        const itemsLimpios = Array.isArray(note.items)
+          ? note.items.map(item => ({
+              id: item.id || crypto.randomUUID(),
+              text: String(item.text || '').trim(),
+              checked: Boolean(item.checked)
+            }))
+          : [];
+
+        if (!textoPlano) {
+          textoPlano = [note.title, ...itemsLimpios.map(i => i.text)].filter(Boolean).join(' - ');
+        }
+
+        return {
+          id: note.id || crypto.randomUUID(),
+          title: note.title ? String(note.title).trim() : null,
+          text: textoPlano,
+          type: 'list',
+          isTask: false,
+          checked: Boolean(note.checked),
+          items: itemsLimpios,
+          createdAt: note.createdAt || new Date().toISOString(),
+          ...(note.embedding ? { embedding: note.embedding } : {})
+        };
       }
 
       return {
         id: note.id || crypto.randomUUID(),
         title: note.title ? String(note.title).trim() : null,
         text: textoPlano,
-        type: esLista ? 'list' : (note.type || 'note'),
-        isTask: Boolean(note.isTask),
-        checked: Boolean(note.checked),
-        items: itemsLimpios,
+        type: 'note',
+        isTask: false,
+        checked: false,
         createdAt: note.createdAt || new Date().toISOString(),
         ...(note.embedding ? { embedding: note.embedding } : {})
       };
@@ -105,6 +134,20 @@ function sanitizarBloqueParaFrontend(block) {
   if (bloqueClon.content && Array.isArray(bloqueClon.content.notes)) {
     bloqueClon.content.notes = bloqueClon.content.notes.map(note => {
       const { embedding, ...resto } = note;
+      const esTarea = resto.type === 'task' || Boolean(resto.isTask);
+      if (esTarea) {
+        resto.type = 'task';
+        resto.isTask = true;
+        delete resto.items;
+      } else if (resto.type === 'list' && !resto.isTask) {
+        resto.type = 'list';
+        resto.isTask = false;
+        resto.items = Array.isArray(resto.items) ? resto.items : [];
+      } else {
+        resto.type = 'note';
+        resto.isTask = false;
+        delete resto.items;
+      }
       return resto;
     });
   }
