@@ -55,20 +55,6 @@ async function obtenerPorId(req, res) {
   }
 }
 
-async function actualizar(req, res) {
-  try {
-    const { is_completed } = req.body;
-    const log = await habitLogService.actualizarHabitLog(req.params.id, is_completed);
-    if (!log) {
-      return res.status(404).json({ error: 'Log no encontrado' });
-    }
-    res.json(log);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error interno al actualizar el log' });
-  }
-}
-
 async function eliminar(req, res) {
   try {
     const result = await habitLogService.eliminarHabitLog(req.params.id);

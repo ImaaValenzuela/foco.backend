@@ -140,20 +140,6 @@ async function obtenerBlocks(req, res) {
   }
 }
 
-async function actualizar(req, res) {
-  try {
-    await inyectarVectoresFaltantes(req.body.content);
-
-    const block = await blockService.actualizarBlock(req.params.id, req.user.profileId, req.body);
-    if (!block) {
-      return res.status(404).json({ error: 'Block no encontrado' });
-    }
-    res.json(sanitizarBloqueParaFrontend(block));
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Error interno al actualizar el block' });
-  }
-}
 
 async function eliminar(req, res) {
   try {
