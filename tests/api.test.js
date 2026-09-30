@@ -115,4 +115,128 @@ describe('API', () => {
     expect(response.status).toBe(403);
     expect(response.body).toEqual({ error: 'No puedes acceder a otro onboarding' });
   });
+
+  test('creates a block with lists and arrow connections in content', async () => {
+    const user = { id: 'auth-user-1', email: 'user@example.com', user_metadata: {} };
+    const profile = { id: 'profile-1', email: user.email };
+    auth.getUser.mockResolvedValueOnce({ data: { user }, error: null });
+    ensureProfile.mockResolvedValueOnce(profile);
+
+    const mockCreatedBlock = {
+      id: 'block-1',
+      user_id: profile.id,
+      type: 'active_objectives',
+      content: {
+        notes: [
+          {
+            id: 'list-1',
+            title: 'Mis tareas',
+            type: 'list',
+            items: [{ id: 'item-1', text: 'Paso 1', checked: false }]
+          }
+        ],
+        connections: [
+          { id: 'conn-1', sourceId: 'list-1', targetId: 'note-2' }
+        ]
+      },
+      updated_at: '2026-09-29T20:00:00Z'
+    };
+
+    pool.query.mockResolvedValueOnce({ rows: [mockCreatedBlock] });
+
+    const response = await request(app)
+      .post('/api/blocks')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        type: 'active_objectives',
+        content: mockCreatedBlock.content
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.content.notes[0].type).toBe('list');
+    expect(response.body.content.connections).toHaveLength(1);
+    expect(pool.query).toHaveBeenCalled();
+  });
+
+  test('creates a block with task and note, ensuring tasks are not converted to lists', async () => {
+    const user = { id: 'auth-user-1', email: 'user@example.com', user_metadata: {} };
+    const profile = { id: 'profile-1', email: user.email };
+    auth.getUser.mockResolvedValueOnce({ data: { user }, error: null });
+    ensureProfile.mockResolvedValueOnce(profile);
+
+    const payloadContent = {
+      notes: [
+        { id: 'task-1', text: 'Comprar insumos', isTask: true, checked: false },
+        { id: 'note-1', text: 'Nota de inspiración', isTask: false }
+      ]
+    };
+
+    pool.query.mockImplementationOnce((sql, params) => {
+      // Retorna el bloque guardado tomando el content sanitizado que se pasó en el insert
+      return Promise.resolve({
+        rows: [{
+          id: 'block-task',
+          user_id: profile.id,
+          type: 'personal_block',
+          content: params[2],
+          updated_at: '2026-09-29T20:00:00Z'
+        }]
+      });
+    });
+
+    const response = await request(app)
+      .post('/api/blocks')
+      .set('Authorization', 'Bearer valid-token')
+      .send({
+        type: 'personal_block',
+        content: payloadContent
+      });
+
+    expect(response.status).toBe(201);
+    const [tarea, nota] = response.body.content.notes;
+    expect(tarea.type).toBe('task');
+    expect(tarea.isTask).toBe(true);
+    expect(tarea.items).toBeUndefined();
+
+    expect(nota.type).toBe('note');
+    expect(nota.isTask).toBe(false);
+    expect(nota.items).toBeUndefined();
+  });
+
+  test('GET /api/blocks/:id sanitizes existing blocks and preserves task identity over list', async () => {
+    const user = { id: 'auth-user-1', email: 'user@example.com', user_metadata: {} };
+    const profile = { id: 'profile-1', email: user.email };
+    auth.getUser.mockResolvedValueOnce({ data: { user }, error: null });
+    ensureProfile.mockResolvedValueOnce(profile);
+
+    const mockStoredBlock = {
+      id: 'block-legacy',
+      user_id: profile.id,
+      type: 'active_objectives',
+      content: {
+        notes: [
+          // Simula un registro corrupto en DB donde una tarea tenía items: [] y type: 'list'
+          { id: 'task-legacy', text: 'Tarea recuperada', isTask: true, type: 'list', items: [] },
+          // Simula una lista real con items
+          { id: 'list-real', title: 'Checklist', type: 'list', items: [{ id: '1', text: 'Item 1', checked: true }] }
+        ]
+      },
+      updated_at: '2026-09-29T20:00:00Z'
+    };
+
+    pool.query.mockResolvedValueOnce({ rows: [mockStoredBlock] });
+
+    const response = await request(app)
+      .get('/api/blocks/block-legacy')
+      .set('Authorization', 'Bearer valid-token');
+
+    expect(response.status).toBe(200);
+    const [tarea, lista] = response.body.content.notes;
+    expect(tarea.type).toBe('task');
+    expect(tarea.isTask).toBe(true);
+    expect(tarea.items).toBeUndefined();
+
+    expect(lista.type).toBe('list');
+    expect(lista.items).toHaveLength(1);
+  });
 });

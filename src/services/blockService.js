@@ -58,10 +58,20 @@ async function obtenerBlocks() {
   return res.rows;
 }
 
+async function obtenerBlockPorUsuarioYTipo(user_id, type) {
+  const res = await pool.query(
+    `SELECT id, user_id, type, content, updated_at
+     FROM blocks WHERE user_id = $1 AND type = $2 LIMIT 1`,
+    [user_id, type]
+  );
+  return res.rows[0];
+}
+
 module.exports = {
   crearBlock,
   obtenerBlocksPorUsuario,
   obtenerBlockPorId,
+  obtenerBlockPorUsuarioYTipo,
   actualizarBlock,
   eliminarBlock,
   obtenerBlocks
