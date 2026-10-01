@@ -37,6 +37,7 @@ app.use('/api/habit-logs', require('./routes/habitLogRoutes'));
 app.use('/api/blocks', require('./routes/blockRoutes'));
 app.use('/api/onboarding', require('./routes/onboardingRoutes'));
 app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/notifications', require('./routes/notificationRoutes'));
 const pomodoroRoutes = require('./routes/pomodoroRoutes');
 
 // RUTA DE INGESTA RAG
