@@ -1,4 +1,5 @@
 const onboardingService = require('../services/onboardingService');
+const pool = require('../db');
 
 async function crear(req, res) {
   try {
@@ -7,6 +8,21 @@ async function crear(req, res) {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error interno al crear el onboarding' });
+  }
+}
+
+async function obtenerEstado(req, res) {
+  try {
+    const perfiles = await onboardingService.obtenerOnboardingPorUsuario(req.user.profileId);
+    const perfil = perfiles && perfiles.length > 0 ? perfiles[0] : null;
+    const completed = !!(perfil && perfil.completed_at);
+    res.json({
+      completed,
+      profiling: perfil || null,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Error interno al obtener el estado de onboarding' });
   }
 }
 
@@ -62,4 +78,11 @@ async function eliminar(req, res) {
   }
 }
 
-module.exports = { crear, obtenerPorUsuario, obtenerPorId, actualizar, eliminar };
+module.exports = {
+  crear,
+  obtenerEstado,
+  obtenerPorUsuario,
+  obtenerPorId,
+  actualizar,
+  eliminar,
+};

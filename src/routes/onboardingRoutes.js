@@ -7,6 +7,7 @@ const { requireAuth } = require('../middleware/require-auth');
 router.use(requireAuth);
 
 router.post('/', onboardingController.crear);
+router.get('/status', onboardingController.obtenerEstado);
 router.get('/user/:userId', onboardingController.obtenerPorUsuario);
 router.get('/:id', onboardingController.obtenerPorId);
 router.put('/:id', onboardingController.actualizar);
