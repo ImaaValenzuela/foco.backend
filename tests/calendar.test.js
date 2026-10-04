@@ -3,15 +3,22 @@ jest.mock('../src/db', () => ({
   end: jest.fn(),
 }));
 
+const mockAuth = {
+  getUser: jest.fn(),
+};
+
 jest.mock('@supabase/supabase-js', () => ({
   createClient: jest.fn(() => ({
-    auth: { getUser: jest.fn() },
+    auth: mockAuth,
   })),
 }));
 
 jest.mock('../src/services/profileService', () => ({
   ensureProfile: jest.fn(),
 }));
+
+process.env.SUPABASE_URL = 'https://example.supabase.co';
+process.env.SUPABASE_ANON_KEY = 'test-key';
 
 const request = require('supertest');
 const pool = require('../src/db');
@@ -27,7 +34,7 @@ const {
 const { classifyIntentLocal, parseCalendarDateTime } = require('../src/services/nluService');
 const { buildRagPromptContext } = require('../src/services/inferenceService');
 
-const auth = createClient.mock.results[0].value.auth;
+const auth = mockAuth;
 
 describe('Google Calendar Integration Suite (F.O.C.O.)', () => {
   const mockUser = {
