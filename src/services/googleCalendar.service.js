@@ -215,22 +215,49 @@ class GoogleCalendarService {
 
   /**
    * Lista los eventos de Google Calendar del día solicitado (por defecto Hoy).
+   * Considera la zona horaria del cliente y rangos timeMin / timeMax para evitar desfases UTC.
    */
-  async listTodayEvents(userId, targetDate = new Date()) {
+  async listTodayEvents(userId, targetDate = new Date(), options = {}) {
     const authClient = await this.getAuthenticatedClient(userId);
     const calendar = google.calendar({ version: 'v3', auth: authClient });
 
-    const date = new Date(targetDate);
-    const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0);
-    const endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+    let timeMin;
+    let timeMax;
 
-    const response = await calendar.events.list({
+    if (options && options.timeMin && options.timeMax) {
+      timeMin = options.timeMin;
+      timeMax = options.timeMax;
+    } else {
+      let startOfDay;
+      let endOfDay;
+
+      if (typeof targetDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(targetDate.trim())) {
+        const [y, m, d] = targetDate.trim().split('-').map(Number);
+        startOfDay = new Date(y, m - 1, d, 0, 0, 0, 0);
+        endOfDay = new Date(y, m - 1, d, 23, 59, 59, 999);
+      } else {
+        const date = targetDate instanceof Date ? targetDate : new Date(targetDate);
+        startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+        endOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+      }
+
+      timeMin = startOfDay.toISOString();
+      timeMax = endOfDay.toISOString();
+    }
+
+    const listParams = {
       calendarId: 'primary',
-      timeMin: startOfDay.toISOString(),
-      timeMax: endOfDay.toISOString(),
+      timeMin,
+      timeMax,
       singleEvents: true,
       orderBy: 'startTime'
-    });
+    };
+
+    if (options && options.timeZone) {
+      listParams.timeZone = options.timeZone;
+    }
+
+    const response = await calendar.events.list(listParams);
 
     const items = response.data.items || [];
     return items.map(event => {

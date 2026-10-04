@@ -257,6 +257,26 @@ describe('Google Calendar Integration Suite (F.O.C.O.)', () => {
       googleCalendarService.listTodayEvents.mockRestore();
     });
 
+    test('GET /api/calendar/events traslada timeMin, timeMax y timeZone a listTodayEvents', async () => {
+      const spy = jest.spyOn(googleCalendarService, 'listTodayEvents').mockResolvedValueOnce([]);
+
+      const res = await request(app)
+        .get('/api/calendar/events?date=2026-10-04&timeMin=2026-10-04T03:00:00.000Z&timeMax=2026-10-05T02:59:59.999Z&timeZone=America/Argentina/Buenos_Aires')
+        .set('Authorization', 'Bearer valid-jwt-token');
+
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledWith(
+        mockUser.id,
+        '2026-10-04',
+        expect.objectContaining({
+          timeMin: '2026-10-04T03:00:00.000Z',
+          timeMax: '2026-10-05T02:59:59.999Z',
+          timeZone: 'America/Argentina/Buenos_Aires'
+        })
+      );
+      spy.mockRestore();
+    });
+
     test('POST /api/calendar/events permite agendar una tarjeta arrastrada (Drag & Drop)', async () => {
       jest.spyOn(googleCalendarService, 'createCalendarEvent').mockResolvedValueOnce({
         id: 'gcal-card-drop-1',

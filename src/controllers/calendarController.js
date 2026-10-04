@@ -42,9 +42,13 @@ async function getStatus(req, res) {
 async function getEvents(req, res) {
   try {
     const userId = req.user.profileId;
-    const date = req.query.date || new Date().toISOString();
+    const { date, timeMin, timeMax, timeZone } = req.query;
 
-    const events = await googleCalendarService.listTodayEvents(userId, date);
+    const events = await googleCalendarService.listTodayEvents(userId, date || new Date().toISOString(), {
+      timeMin,
+      timeMax,
+      timeZone
+    });
     return res.status(200).json({
       success: true,
       connected: true,
