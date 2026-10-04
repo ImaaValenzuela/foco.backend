@@ -79,7 +79,7 @@ const UNIFIED_SNAPSHOT_QUERY = `
  * Recopila el contexto real del usuario, consulta a la IA y audita el resultado.
  * Patrón "Fire-and-Forget" omnicanal con CERO latencia agregada al frontend.
  */
-async function evaluarEstadoGlobal(userId, triggerSource = 'pomodoro', sourceId = null) {
+async function evaluarEstadoGlobal(userId, triggerSource = 'pomodoro', sourceId = null, customCalendarSummary = null) {
   // 1. DESACOPLAMIENTO ABSOLUTO DEL EVENT LOOP
   // Cede inmediatamente el turno para permitir que el controlador responda al frontend (HTTP 201/200 inmediato).
   await new Promise(resolve => setImmediate(resolve));
@@ -117,11 +117,13 @@ async function evaluarEstadoGlobal(userId, triggerSource = 'pomodoro', sourceId 
     });
 
     // 4.1. RECUPERACIÓN SILENCIOSA DE AGENDA GOOGLE CALENDAR (Fase 4 RAG)
-    let calendarSummary = { connected: false, totalCount: 0, busyHours: 0, hasNightEvents: false, events: [] };
-    try {
-      calendarSummary = await googleCalendarService.getTodayEventsSummary(userId);
-    } catch (calErr) {
-      // Resiliente ante usuario sin calendar conectado o fallos de red
+    let calendarSummary = customCalendarSummary || { connected: false, totalCount: 0, busyHours: 0, hasNightEvents: false, events: [] };
+    if (!customCalendarSummary && process.env.NODE_ENV !== 'test') {
+      try {
+        calendarSummary = await googleCalendarService.getTodayEventsSummary(userId);
+      } catch (calErr) {
+        // Resiliente ante usuario sin calendar conectado o fallos de red
+      }
     }
 
     // 5. CONSTRUCCIÓN DEL PAYLOAD SEGÚN CONTRATO ESTRICTO
