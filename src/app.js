@@ -40,8 +40,14 @@ app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/notifications', require('./routes/notificationRoutes'));
 const pomodoroRoutes = require('./routes/pomodoroRoutes');
 
-// RUTA DE INGESTA RAG
-app.use('/api/ingest', require('./routes/ingestRoutes'));
+// RUTA DE INGESTA RAG Y NLU
+const ingestRoutes = require('./routes/ingestRoutes');
+app.use('/api/ingest', ingestRoutes);
+app.use('/api/nlu/ingest', ingestRoutes);
+app.use('/api/nlu/audio', ingestRoutes);
+
+// RUTA DE GOOGLE CALENDAR
+app.use('/api/calendar', require('./routes/calendarRoutes'));
 
 const pool = require('./db');
 

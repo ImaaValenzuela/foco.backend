@@ -211,14 +211,19 @@ class RuleEngine:
         # ---------------------------------------------------------
         if motivations.get("mot_reduce_fatigue", False):
             
-            # Regla D.1: Descarga Cognitiva Nocturna Preventiva
+            # Regla D.1: Descarga Cognitiva Nocturna Preventiva con integración Google Calendar
             work_hours = routine.get("work", 0)
-            if work_hours >= 8 and time_float > 18.0 and not metrics.get("personal_block_updated_today", True):
+            cal_busy = metrics.get("calendar_busy_hours", 0)
+            cal_events_today = metrics.get("calendar_events_today", 0)
+            effective_work_hours = work_hours + cal_busy
+
+            if (effective_work_hours >= 8 or cal_events_today >= 3) and time_float > 18.0 and not metrics.get("personal_block_updated_today", True):
+                meeting_msg = f" con {cal_events_today} reuniones agendadas" if cal_events_today > 0 else ""
                 return {
                     "triggered": True,
                     "rule_id": "F_FAT_PREVENCION_DUMP",
                     "action_taken": "OPEN_QUICK_CAPTURE_DRAWER",
-                    "suggested_message": "Terminó una jornada larga. Para descansar de verdad, hacé una 'descarga cognitiva' rápida acá. Escribí todo lo que te dé vueltas en la cabeza y dejalo."
+                    "suggested_message": f"Terminó una jornada larga{meeting_msg}. Para descansar de verdad, hacé una 'descarga cognitiva' rápida acá. Escribí todo lo que te dé vueltas en la cabeza y dejalo."
                 }
 
             # Regla D.2: Prevención de Sobre-enfoque

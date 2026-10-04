@@ -1,4 +1,5 @@
 const pool = require('../db');
+const { googleCalendarService } = require('./googleCalendar.service');
 
 /**
  * Circuit Breaker en memoria para aislar fallas del microservicio Python.
@@ -78,7 +79,7 @@ const UNIFIED_SNAPSHOT_QUERY = `
  * Recopila el contexto real del usuario, consulta a la IA y audita el resultado.
  * Patrón "Fire-and-Forget" omnicanal con CERO latencia agregada al frontend.
  */
-async function evaluarEstadoGlobal(userId, triggerSource = 'pomodoro', sourceId = null) {
+async function evaluarEstadoGlobal(userId, triggerSource = 'pomodoro', sourceId = null, customCalendarSummary = null) {
   // 1. DESACOPLAMIENTO ABSOLUTO DEL EVENT LOOP
   // Cede inmediatamente el turno para permitir que el controlador responda al frontend (HTTP 201/200 inmediato).
   await new Promise(resolve => setImmediate(resolve));
@@ -115,6 +116,16 @@ async function evaluarEstadoGlobal(userId, triggerSource = 'pomodoro', sourceId 
       };
     });
 
+    // 4.1. RECUPERACIÓN SILENCIOSA DE AGENDA GOOGLE CALENDAR (Fase 4 RAG)
+    let calendarSummary = customCalendarSummary || { connected: false, totalCount: 0, busyHours: 0, hasNightEvents: false, events: [] };
+    if (!customCalendarSummary && process.env.NODE_ENV !== 'test') {
+      try {
+        calendarSummary = await googleCalendarService.getTodayEventsSummary(userId);
+      } catch (calErr) {
+        // Resiliente ante usuario sin calendar conectado o fallos de red
+      }
+    }
+
     // 5. CONSTRUCCIÓN DEL PAYLOAD SEGÚN CONTRATO ESTRICTO
     const snapshotPayload = {
       user_id: String(userId),
@@ -138,7 +149,11 @@ async function evaluarEstadoGlobal(userId, triggerSource = 'pomodoro', sourceId 
         pomodoro_completed_last_4h: Number(pomoMetrics.completed_4h) || 0,
         pomodoro_interrupted_last_24h: Number(pomoMetrics.interrupted_24h) || 0,
         personal_block_pending_items: personalPending,
-        all_blocks_total_items: allBlocksTotal
+        all_blocks_total_items: allBlocksTotal,
+        calendar_events_today: calendarSummary.totalCount,
+        calendar_busy_hours: calendarSummary.busyHours,
+        calendar_has_night_events: calendarSummary.hasNightEvents,
+        calendar_events_summary: calendarSummary.events
       }
     };
 
@@ -207,9 +222,46 @@ async function evaluarEstadoGlobal(userId, triggerSource = 'pomodoro', sourceId 
 // Alias de retrocompatibilidad
 const evaluarReglasPomodoro = (userId, pomodoroId) => evaluarEstadoGlobal(userId, 'pomodoro', pomodoroId);
 
+/**
+ * Orquestador RAG (Fase 4): Construye el prompt contextual enriquecido
+ * integrando la agenda y eventos del día de Google Calendar para alimentar
+ * al LLM y evitar alucinaciones/ambigüedades.
+ */
+function buildRagPromptContext(profile = {}, blocks = [], habitsMetrics = {}, calendarSummary = {}) {
+  const userInterests = Array.isArray(profile.interests) ? profile.interests.join(', ') : 'Ninguno';
+  const calEvents = Array.isArray(calendarSummary.events) && calendarSummary.events.length > 0
+    ? calendarSummary.events.map(e => `- ${e.title} (${e.start ? new Date(e.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Hora no definida'})`).join('\n')
+    : 'Sin eventos programados para hoy';
+
+  const workHours = Number(profile.work_hours_daily) || 0;
+  const busyHours = Number(calendarSummary.busyHours) || 0;
+  const totalLoad = workHours + busyHours;
+
+  return `
+=== CONTEXTO DEL USUARIO (RAG FOCO) ===
+- Motivaciones: Hábitos (${profile.mot_create_habits ? 'Sí' : 'No'}), Foco/Dispersión (${profile.mot_avoid_dispersion ? 'Sí' : 'No'}), Organización (${profile.mot_organization ? 'Sí' : 'No'}), Reducir Fatiga (${profile.mot_reduce_fatigue ? 'Sí' : 'No'})
+- Intereses: ${userInterests}
+- Rutina Diaria Declarada: Trabajo ${workHours}h, Estudio ${profile.study_hours_daily || 0}h, Ocio ${profile.leisure_hours_daily || 0}h
+
+=== AGENDA Y EVENTOS DEL DÍA (GOOGLE CALENDAR) ===
+- Eventos hoy: ${calendarSummary.totalCount || 0} reunión(es)
+- Horas ocupadas en reuniones: ${busyHours}h
+- Eventos nocturnos (>=18hs): ${calendarSummary.hasNightEvents ? 'Sí' : 'No'}
+- Detalle de agenda:
+${calEvents}
+
+=== ESTADO DE CARGA Y FATIGA COGNITIVA ===
+- Carga total de jornada (Trabajo + Reuniones Calendar): ${totalLoad}h
+- Pomodoros completados en 4h: ${habitsMetrics.pomodoro_completed_last_4h || 0}
+- Alerta preventiva de fatiga (F_FAT_PREVENCION_DUMP activa si jornada >= 8h y hora > 18:00)
+=======================================
+`.trim();
+}
+
 module.exports = {
   evaluarEstadoGlobal,
   evaluarReglasPomodoro,
+  buildRagPromptContext,
   CircuitBreaker,
   iaCircuitBreaker,
   UNIFIED_SNAPSHOT_QUERY
