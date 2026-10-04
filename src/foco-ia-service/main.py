@@ -73,6 +73,39 @@ async def classify_text(request: IngestRequest):
                 }
             )
 
+        # 2.5. IDENTIFICACIÓN DE EVENTOS DE GOOGLE CALENDAR
+        is_calendar_event = bool(re.search(r"\b(reuni[oó]n|reuniones|junta|citas?|meets?|meetings?|agendar?|agendame|agenda\b|llamadas?|entrevistas?|evento|eventos)\b", text))
+        if is_calendar_event:
+            title_clean = re.sub(r"\b(?:foco|agenda|agendar|agendame|crea|crear|agrega|agregar|anota|anotame|nuevo|nueva)\b", "", text)
+            title_clean = re.sub(r"\b(?:en|para)?\s*(?:el|la)?\s*(?:bloque\s+)?(?:de\s+)?(?:personal|objetivos?\s+activos?|inspiraci[oó]n(?:\s+y\s+creatividad)?|creatividad|archivo\s+de\s+vida)\b", "", title_clean)
+            title_clean = re.sub(r"\b(?:pasado\s+mañana|mañana|hoy|el\s+(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo))\b", "", title_clean)
+            title_clean = re.sub(r"\b(?:a\s+las?|a\s+la|para\s+las?)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm|hs|h|hrs)?\b", "", title_clean)
+            title_clean = re.sub(r"\b\d{1,2}(?::\d{2})\s*(?:am|pm)?\b", "", title_clean)
+            title_clean = re.sub(r"\b\d{1,2}\s*(?:am|pm)\b", "", title_clean)
+            title_clean = re.sub(r"^(?:\s*(?:un|una|el|la|los|las|de|para)\b)+", "", title_clean).strip()
+            cal_title = title_clean.capitalize() if title_clean else "Reunión agendada"
+            cal_target_block = "personal_block" if "personal" in text else "active_objectives"
+
+            cal_data = {
+                "title": cal_title,
+                "text": request.text.strip(),
+                "isTask": True,
+                "isList": False,
+                "type": "task"
+            }
+            if sbert_model is not None:
+                try:
+                    cal_data["embedding"] = sbert_model.encode(cal_title).tolist()
+                except Exception:
+                    pass
+
+            return ClassificationResponse(
+                intent="CREATE_CALENDAR_EVENT",
+                targetBlock=cal_target_block,
+                action="ADD_CALENDAR_EVENT",
+                extractedData=cal_data
+            )
+
         # 3. IDENTIFICACIÓN DE TIPO (Lista, Tarea, Hábito, Nota)
         is_habit = bool(re.search(r"\b(h[aá]bitos?|rutinas?)\b", text))
         is_list = not is_habit and bool(re.search(r"\b(listas?|checklists?|enumeraci[oó]n|items?|ítems?)\b", text))

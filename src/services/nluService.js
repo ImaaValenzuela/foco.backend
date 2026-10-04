@@ -1,6 +1,77 @@
 // src/services/nluService.js
 const crypto = require('crypto');
 
+function parseCalendarDateTime(text) {
+  const now = new Date();
+  let targetDate = new Date(now);
+  let hasDate = false;
+  let hasTime = false;
+
+  // Fecha relativa: "pasado mañana", "mañana", "hoy"
+  if (/\bpasado\s+mañana\b/i.test(text)) {
+    targetDate.setDate(targetDate.getDate() + 2);
+    hasDate = true;
+  } else if (/\bmañana\b/i.test(text)) {
+    targetDate.setDate(targetDate.getDate() + 1);
+    hasDate = true;
+  } else if (/\bhoy\b/i.test(text)) {
+    hasDate = true;
+  }
+
+  // Días de la semana
+  const daysMap = { domingo: 0, lunes: 1, martes: 2, miercoles: 3, miércoles: 3, jueves: 4, viernes: 5, sabado: 6, sábado: 6 };
+  for (const [dayName, dayIndex] of Object.entries(daysMap)) {
+    const regex = new RegExp(`\\b(?:el\\s+)?${dayName}\\b`, 'i');
+    if (regex.test(text) && !hasDate) {
+      const currentDay = now.getDay();
+      let diff = dayIndex - currentDay;
+      if (diff <= 0) diff += 7;
+      targetDate.setDate(now.getDate() + diff);
+      hasDate = true;
+      break;
+    }
+  }
+
+  // Hora: "a las 10am", "a las 10:30", "a las 15hs", "a las 10", "10am", "10:00"
+  const timeMatch = text.match(/\b(?:a\s+las?|a\s+la|para\s+las?)\s*(\d{1,2})(?::(\d{2}))?\s*(am|pm|hs|h|hrs)?\b/i) ||
+                    text.match(/\b(\d{1,2})(?::(\d{2}))\s*(am|pm)?\b/i) ||
+                    text.match(/\b(\d{1,2})\s*(am|pm)\b/i);
+
+  if (timeMatch) {
+    let hours = parseInt(timeMatch[1], 10);
+    const minutes = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+    const meridian = timeMatch[3] ? timeMatch[3].toLowerCase() : null;
+
+    if (meridian === 'pm' && hours < 12) hours += 12;
+    if (meridian === 'am' && hours === 12) hours = 0;
+
+    targetDate.setHours(hours, minutes, 0, 0);
+    hasTime = true;
+  } else {
+    if (hasDate) {
+      targetDate.setHours(10, 0, 0, 0);
+    } else {
+      targetDate.setHours(targetDate.getHours() + 1, 0, 0, 0);
+    }
+  }
+
+  if (!hasDate && hasTime) {
+    if (targetDate.getTime() <= now.getTime()) {
+      targetDate.setDate(targetDate.getDate() + 1);
+    }
+  }
+
+  const endDate = new Date(targetDate);
+  endDate.setHours(endDate.getHours() + 1);
+
+  return {
+    startDate: targetDate.toISOString(),
+    endDate: endDate.toISOString(),
+    timeStr: `${String(targetDate.getHours()).padStart(2, '0')}:${String(targetDate.getMinutes()).padStart(2, '0')}`,
+    dateStr: hasDate ? (/\bmañana\b/i.test(text) ? 'mañana' : targetDate.toISOString().split('T')[0]) : 'hoy'
+  };
+}
+
 /**
  * Clasificador local ultrarrápido (<1ms) basado en reglas y expresiones regulares.
  * Sirve como motor de alto rendimiento y fallback resiliente ante indisponibilidad del microservicio Python.
@@ -30,12 +101,49 @@ function classifyIntentLocal(rawText) {
     };
   }
 
-  // 2. Detección de tipos de componentes
+  // 2. Detección de intención de Google Calendar (Eventos / Reuniones)
+  const isCalendarEvent = /\b(reuni[oó]n|reuniones|junta|citas?|meets?|meetings?|agendar?|agendame|agenda\b|llamadas?|entrevistas?|evento|eventos)\b/i.test(text);
+  if (isCalendarEvent) {
+    const { startDate, endDate, timeStr, dateStr } = parseCalendarDateTime(text);
+    let title = text
+      .replace(/\b(?:foco|agenda|agendar|agendame|crea|crear|agrega|agregar|anota|anotame|nuevo|nueva)\b/gi, '')
+      .replace(/\b(?:en|para)?\s*(?:el|la)?\s*(?:bloque\s+)?(?:de\s+)?(?:personal|objetivos?\s+activos?|inspiraci[oó]n(?:\s+y\s+creatividad)?|creatividad|archivo\s+de\s+vida)\b/gi, '')
+      .replace(/\b(?:pasado\s+mañana|mañana|hoy|el\s+(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo))\b/gi, '')
+      .replace(/\b(?:a\s+las?|a\s+la|para\s+las?)\s*\d{1,2}(?::\d{2})?\s*(?:am|pm|hs|h|hrs)?\b/gi, '')
+      .replace(/\b\d{1,2}(?::\d{2})\s*(?:am|pm)?\b/gi, '')
+      .replace(/\b\d{1,2}\s*(?:am|pm)\b/gi, '')
+      .replace(/^(?:\s*(?:un|una|el|la|los|las|de|para)\b)+/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    title = title ? title.charAt(0).toUpperCase() + title.slice(1) : 'Reunión agendada';
+
+    const targetBlock = /\bpersonal\b/i.test(text) ? 'personal_block' : 'active_objectives';
+
+    return {
+      intent: 'CREATE_CALENDAR_EVENT',
+      targetBlock,
+      action: 'ADD_CALENDAR_EVENT',
+      extractedData: {
+        title,
+        text: text.trim(),
+        startDate,
+        endDate,
+        timeStr,
+        dateStr,
+        isTask: true,
+        isList: false,
+        type: 'task'
+      }
+    };
+  }
+
+  // 3. Detección de tipos de componentes
   const isHabit = /\b(h[aá]bitos?|rutinas?)\b/i.test(text);
   const isList = !isHabit && /\b(listas?|checklists?|enumeraci[oó]n|items?|ítems?)\b/i.test(text);
   const isTask = !isHabit && !isList && /\b(tareas?|recordatorios?|pendientes?|to-?do)\b/i.test(text);
 
-  // 3. Inferencia de cuadrante P.A.R.A.
+  // 4. Inferencia de cuadrante P.A.R.A.
   let targetBlock = isHabit ? 'habit_creation' : (isList ? 'personal_block' : 'life_archive');
   if (!isHabit) {
     if (/\b(personal)\b/i.test(text)) targetBlock = 'personal_block';
@@ -194,4 +302,4 @@ async function classifyIntent(text) {
   }
 }
 
-module.exports = { classifyIntent, classifyIntentLocal };
+module.exports = { classifyIntent, classifyIntentLocal, parseCalendarDateTime };

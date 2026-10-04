@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const nluService = require('../services/nluService');
 const blockService = require('../services/blockService');
 const habitService = require('../services/habitService');
+const { googleCalendarService } = require('../services/googleCalendar.service');
 
 async function processIngestion(req, res) {
   try {
@@ -104,6 +105,61 @@ async function processIngestion(req, res) {
         message: 'Hábito creado y vectorizado correctamente',
         type: 'HABIT',
         data: nuevoHabito
+      });
+    }
+
+    // 3.5. RUTA CALENDARIO DUAL: Creación de Evento en Google Calendar + Bloque en Lienzo
+    if (intent === 'CREATE_CALENDAR_EVENT') {
+      let calendarEvent = null;
+      let calendarSynced = false;
+
+      try {
+        calendarEvent = await googleCalendarService.createCalendarEvent(userId, {
+          summary: extractedData.title || text.trim(),
+          description: text.trim(),
+          start: extractedData.startDate,
+          end: extractedData.endDate
+        });
+        calendarSynced = true;
+      } catch (calError) {
+        console.warn('No se pudo sincronizar evento con Google Calendar (modo offline o no conectado):', calError.message);
+      }
+
+      // Sincronización en el bloque correspondiente del lienzo (active_objectives o personal_block)
+      const calBlockType = targetBlock || 'active_objectives';
+      const bloqueActual = await blockService.obtenerBlockPorUsuarioYTipo(userId, calBlockType);
+
+      let nuevoContenido = bloqueActual && bloqueActual.content ? { ...bloqueActual.content } : { notes: [], connections: [] };
+      nuevoContenido.notes = Array.isArray(nuevoContenido.notes) ? [...nuevoContenido.notes] : [];
+      nuevoContenido.connections = Array.isArray(nuevoContenido.connections) ? [...nuevoContenido.connections] : [];
+
+      const noteTitle = extractedData.title || 'Evento agendado';
+      const eventNote = {
+        id: crypto.randomUUID(),
+        title: noteTitle,
+        text: extractedData.text || text.trim(),
+        type: 'task',
+        isTask: true,
+        checked: false,
+        calendarEventId: calendarEvent?.id || null,
+        calendarLink: calendarEvent?.htmlLink || null,
+        calendarSynced,
+        scheduledAt: extractedData.startDate || null,
+        createdAt: new Date().toISOString()
+      };
+
+      nuevoContenido.notes.push(eventNote);
+      const savedBlock = await blockService.crearBlock(userId, calBlockType, nuevoContenido);
+
+      return res.status(200).json({
+        message: calendarSynced
+          ? 'Evento agendado en Google Calendar y guardado en el lienzo correctamente'
+          : 'Evento guardado en el lienzo (Google Calendar no sincronizado)',
+        type: 'CALENDAR_EVENT',
+        calendarSynced,
+        calendarEvent,
+        data: savedBlock,
+        note: eventNote
       });
     }
 
