@@ -49,6 +49,9 @@ app.use('/api/nlu/audio', ingestRoutes);
 // RUTA DE GOOGLE CALENDAR
 app.use('/api/calendar', require('./routes/calendarRoutes'));
 
+// RUTA DE IA Y ORQUESTADOR RAG (FASE 4)
+app.use('/api/ai', require('./routes/aiRoutes'));
+
 const pool = require('./db');
 
 app.get('/api/health', async (req, res) => {
