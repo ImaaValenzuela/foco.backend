@@ -20,6 +20,10 @@ jest.mock('../src/services/profileService', () => ({
 process.env.SUPABASE_URL = 'https://example.supabase.co';
 process.env.SUPABASE_ANON_KEY = 'test-anon-key';
 
+delete process.env.GEMINI_API_KEY;
+delete process.env.GOOGLE_API_KEY;
+delete process.env.OPENAI_API_KEY;
+
 const request = require('supertest');
 const pool = require('../src/db');
 const { ensureProfile } = require('../src/services/profileService');
@@ -46,6 +50,7 @@ describe('FASE 5: Orquestador LangChain con Prompt de Fase 4 y Structured Output
   beforeEach(() => {
     jest.clearAllMocks();
     ragOrchestratorService.circuitBreaker.reset();
+    langchainOrchestratorService.geminiApiKey = null;
 
     mockAuth.getUser.mockResolvedValue({
       data: { user: mockUser },

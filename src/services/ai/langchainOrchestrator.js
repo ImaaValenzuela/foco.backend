@@ -6,6 +6,11 @@ const {
   phase4_prompt_template
 } = require('./ragOrchestrator');
 
+let ChatGoogleGenerativeAI = null;
+try {
+  ChatGoogleGenerativeAI = require('@langchain/google-genai').ChatGoogleGenerativeAI;
+} catch {}
+
 /**
  * Esquema Zod de Validación Estricta para Structured Outputs (Fase 5)
  * Define el contrato JSON que el LLM (Gemini u otros) debe satisfacer rigurosamente.
@@ -122,6 +127,22 @@ const RULE_ACTION_MAPPING = {
 };
 
 /**
+ * Normaliza nombres de modelos de Google Gemini ante deprecaciones o aliases
+ */
+function normalizeGeminiModel(name) {
+  if (!name) return 'gemini-flash-latest';
+  const clean = name.trim();
+  const legacyMap = {
+    'gemini-1.5-flash-latest': 'gemini-flash-latest',
+    'gemini-1.5-flash': 'gemini-flash-latest',
+    'gemini-2.5-flash': 'gemini-flash-latest',
+    'gemini-1.5-pro': 'gemini-pro-latest',
+    'gemini-1.5-pro-latest': 'gemini-pro-latest'
+  };
+  return legacyMap[clean] || clean;
+}
+
+/**
  * Servicio Orquestador de LangChain (Fase 5)
  *
  * Integra:
@@ -134,7 +155,7 @@ class LangChainOrchestratorService {
   constructor() {
     this.provider = process.env.LLM_PROVIDER || process.env.AI_PROVIDER || 'gemini';
     this.geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || null;
-    this.modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+    this.modelName = normalizeGeminiModel(process.env.GEMINI_MODEL || 'gemini-flash-latest');
   }
 
   /**
@@ -142,22 +163,28 @@ class LangChainOrchestratorService {
    * Soporta ChatGoogleGenerativeAI como proveedor preferente.
    *
    * @param {string} [provider]
+   * @param {string} [modelOverride]
    * @returns {object|null} Cliente LangChain con Structured Outputs o null si no hay API key
    */
-  getLlmClient(provider = this.provider) {
+  getLlmClient(provider = this.provider, modelOverride = null) {
+    if (process.env.NODE_ENV === 'test' && !process.env.TEST_LIVE_LLM) {
+      return null;
+    }
+
     const activeProvider = (provider || 'gemini').toLowerCase();
 
     if (activeProvider === 'gemini') {
       const apiKey = this.geminiApiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-      if (!apiKey) {
+      if (!apiKey || !ChatGoogleGenerativeAI) {
         return null;
       }
 
+      const targetModel = modelOverride || normalizeGeminiModel(process.env.GEMINI_MODEL || this.modelName);
+
       try {
-        const { ChatGoogleGenerativeAI } = require('@langchain/google-genai');
         const llm = new ChatGoogleGenerativeAI({
           apiKey,
-          model: this.modelName,
+          model: targetModel,
           temperature: 0.2,
           maxOutputTokens: 1024
         });
@@ -167,7 +194,7 @@ class LangChainOrchestratorService {
           name: 'foco_inference_output'
         });
       } catch (err) {
-        console.warn(`[LangChainOrchestrator] Error instanciando ChatGoogleGenerativeAI: ${err.message}`);
+        console.warn(`[LangChainOrchestrator] Error instanciando ChatGoogleGenerativeAI (${targetModel}): ${err.message}`);
         return null;
       }
     }
@@ -275,12 +302,13 @@ class LangChainOrchestratorService {
     const effectiveRuleId = ruleId || ragContext.meta?.ruleId || 'F_DISP_DESVIO_ESTUDIO';
 
     // 2. EJECUCIÓN CON LANGCHAIN STRUCTURED OUTPUTS
-    const llmClient = this.getLlmClient();
+    const isTestEnv = process.env.NODE_ENV === 'test' && !process.env.TEST_LIVE_LLM;
+    const apiKey = !isTestEnv && (this.geminiApiKey || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY);
     let structuredResult = null;
+    let usedLlm = false;
 
-    if (llmClient) {
-      try {
-        const fullSystemInstruction = `${phase4SystemPrompt}
+    if (apiKey) {
+      const fullSystemInstruction = `${phase4SystemPrompt}
 
 [FORMATO DE RESPUESTA OBLIGATORIO - LANGCHAIN STRUCTURED OUTPUT]
 Debes responder ÚNICAMENTE mediante el esquema estructurado JSON requerido, sin preámbulos, markdown ni explicaciones adicionales:
@@ -289,26 +317,42 @@ Debes responder ÚNICAMENTE mediante el esquema estructurado JSON requerido, sin
 - action_taken: acción técnica sugerida
 - action_payload: detalle de tarjeta, pomodoro o hábito a ejecutar en el lienzo`;
 
-        const messages = [
-          { role: 'system', content: fullSystemInstruction },
-          { role: 'user', content: message || '¿Qué me sugieres hacer ahora?' }
-        ];
+      const messages = [
+        { role: 'system', content: fullSystemInstruction },
+        { role: 'user', content: message || '¿Qué me sugieres hacer ahora?' }
+      ];
 
-        const rawResponse = await llmClient.invoke(messages);
-        const parsed = StructuredInferenceSchema.safeParse(rawResponse);
+      const baseModel = normalizeGeminiModel(process.env.GEMINI_MODEL || this.modelName);
+      const candidateModels = [
+        baseModel,
+        'gemini-flash-latest',
+        'gemini-3.8-flash',
+        'gemini-pro-latest'
+      ].filter((m, i, arr) => m && arr.indexOf(m) === i);
 
-        if (parsed.success) {
-          structuredResult = parsed.data;
-        } else {
-          console.warn('[LangChainOrchestrator] Validación Zod parcial:', parsed.error.issues);
-          structuredResult = this.generateFallbackStructuredOutput({
-            ruleId: effectiveRuleId,
-            userMessage: message,
-            ragContext
-          });
+      for (const candidate of candidateModels) {
+        try {
+          const client = this.getLlmClient(this.provider, candidate);
+          if (!client) continue;
+
+          const rawResponse = await client.invoke(messages);
+          const parsed = StructuredInferenceSchema.safeParse(rawResponse);
+
+          if (parsed.success) {
+            structuredResult = parsed.data;
+            this.modelName = candidate;
+            usedLlm = true;
+            break;
+          } else {
+            console.warn(`[LangChainOrchestrator] Validación parcial con ${candidate}:`, parsed.error.issues);
+          }
+        } catch (attemptErr) {
+          console.warn(`[LangChainOrchestrator] Modelo ${candidate} no disponible (${attemptErr.message}). Probando alternativa...`);
         }
-      } catch (llmErr) {
-        console.warn(`[LangChainOrchestrator] Falla en llamada al proveedor LLM (${llmErr.message}). Aplicando fallback estructurado.`);
+      }
+
+      if (!structuredResult) {
+        console.warn('[LangChainOrchestrator] Ningún modelo LLM remoto respondió exitosamente. Aplicando fallback estructurado.');
         structuredResult = this.generateFallbackStructuredOutput({
           ruleId: effectiveRuleId,
           userMessage: message,
@@ -388,7 +432,7 @@ Debes responder ÚNICAMENTE mediante el esquema estructurado JSON requerido, sin
         userId,
         provider: this.provider,
         model: this.modelName,
-        usedFallback: !llmClient,
+        usedFallback: !usedLlm,
         timestamp: new Date().toISOString()
       }
     };
