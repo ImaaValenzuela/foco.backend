@@ -478,7 +478,22 @@ Genera una respuesta conversacional breve (máximo 3 oraciones), accionable y em
 
 const ragOrchestratorService = new RagOrchestratorService();
 
+/**
+ * Función canónica de la Fase 4 para ensamble de prompt RAG
+ * Permite consumo polimórfico directo por parte del orquestador de Fase 5.
+ */
+function build_rag_prompt(paramsOrUserId, options = {}) {
+  if (typeof paramsOrUserId === 'object' && paramsOrUserId !== null && 'profile' in paramsOrUserId) {
+    return ragOrchestratorService.assembleSystemPrompt(paramsOrUserId);
+  }
+  return ragOrchestratorService.orchestrate(paramsOrUserId, options);
+}
+
+const phase4_prompt_template = (params) => ragOrchestratorService.assembleSystemPrompt(params);
+
 module.exports = {
   RagOrchestratorService,
-  ragOrchestratorService
+  ragOrchestratorService,
+  build_rag_prompt,
+  phase4_prompt_template
 };

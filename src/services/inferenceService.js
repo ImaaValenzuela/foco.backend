@@ -214,7 +214,12 @@ ${calEvents}
 }
 
 // Integración con el Orquestador RAG (Fase 4)
-const { RagOrchestratorService, ragOrchestratorService } = require('./ai/ragOrchestrator');
+const {
+  RagOrchestratorService,
+  ragOrchestratorService,
+  build_rag_prompt,
+  phase4_prompt_template
+} = require('./ai/ragOrchestrator');
 
 module.exports = {
   evaluarEstadoGlobal,
@@ -224,5 +229,7 @@ module.exports = {
   iaCircuitBreaker,
   UNIFIED_SNAPSHOT_QUERY,
   RagOrchestratorService,
-  ragOrchestratorService
+  ragOrchestratorService,
+  build_rag_prompt,
+  phase4_prompt_template
 };
