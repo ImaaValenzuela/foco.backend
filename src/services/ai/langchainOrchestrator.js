@@ -132,7 +132,7 @@ const RULE_ACTION_MAPPING = {
  */
 class LangChainOrchestratorService {
   constructor() {
-    this.provider = process.env.LLM_PROVIDER || 'gemini';
+    this.provider = process.env.LLM_PROVIDER || process.env.AI_PROVIDER || 'gemini';
     this.geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || null;
     this.modelName = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
   }
