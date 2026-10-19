@@ -32,6 +32,7 @@ const ActionPayloadSchema = z.object({
   ]).optional().describe('Bloque P.A.R.A. destino en el lienzo'),
   title: z.string().optional().describe('Título sugerido para la tarjeta o hábito'),
   content: z.string().optional().describe('Texto o descripción detallada de la tarea o nota'),
+  isTask: z.boolean().optional().describe('true si el usuario solicita una tarea con checkbox, false si es una nota o apunte libre'),
   focusMinutes: z.number().optional().describe('Duración en minutos para el temporizador Pomodoro'),
   habitId: z.string().optional().describe('Identificador de hábito para alternar o marcar')
 }).describe('Carga útil técnica ejecutable sobre el lienzo interactivo');
@@ -242,7 +243,143 @@ class LangChainOrchestratorService {
       const cleanUserMsg = (userMessage || '').toLowerCase();
       let suggestedMessage = '';
 
-      if (cleanUserMsg.includes('react') || cleanUserMsg.includes('código') || cleanUserMsg.includes('program')) {
+      // A) Detección de creación de Pomodoro
+      const isPomodoro = /(?:pomodoro|temporizador|timer|modo\s+foco)/i.test(cleanUserMsg);
+      if (isPomodoro) {
+        const minMatch = cleanUserMsg.match(/\b(\d{1,3})\s*(?:minutos?|mins?|m)\b/i) || cleanUserMsg.match(/\b(\d{1,3})\b/);
+        let focusMinutes = 25;
+        if (minMatch) {
+          const parsed = parseInt(minMatch[1], 10);
+          if (parsed > 0 && parsed <= 180) focusMinutes = parsed;
+        }
+        return {
+          rule_id: 'GENERAL_CONVERSATION',
+          suggested_message: `Preparé un ciclo Pomodoro de ${focusMinutes} minutos para enfocarte con tranquilidad. Hacé clic en "Ejecutar en el lienzo" para iniciarlo.`,
+          action_taken: 'CONFIG_POMODORO',
+          action_payload: {
+            type: 'start_pomodoro',
+            focusMinutes,
+            content: `Ciclo de enfoque de ${focusMinutes} minutos`
+          }
+        };
+      }
+
+      // B) Detección de creación de Hábito
+      const isHabitCreation = /\b(?:h[aá]bitos?|rutinas?)\b/i.test(cleanUserMsg) &&
+        /\b(?:crear?|agreg[aá]r?|nuev[oa]|anot[aá]r?|sumar?)\b/i.test(cleanUserMsg);
+      if (isHabitCreation) {
+        let habitName = (userMessage || '')
+          .replace(/\b(?:crear?|agreg[aá]r?|nuev[oa]|anot[aá]r?|sumar?|un[as]?|el|la|los|las|de|h[aá]bitos?|rutinas?)\b/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        habitName = habitName ? habitName.charAt(0).toUpperCase() + habitName.slice(1) : 'Nuevo hábito diario';
+        return {
+          rule_id: 'GENERAL_CONVERSATION',
+          suggested_message: `Excelente hábito: "${habitName}". La constancia es el mejor camino. Hacé clic en "Ejecutar en el lienzo" para sumarlo a tu tracker.`,
+          action_taken: 'ADD_HABIT',
+          action_payload: {
+            type: 'add_habit',
+            title: habitName,
+            content: habitName
+          }
+        };
+      }
+
+      // C) Detección de creación de Tarea (Task con checkbox, isTask: true)
+      const isTaskCreation = /\b(?:tareas?|pendientes?|to-?do|recordatorios?)\b/i.test(cleanUserMsg);
+      if (isTaskCreation) {
+        let taskText = (userMessage || '')
+          .replace(/\b(?:crear?|agreg[aá]r?|anot[aá]r?|nuev[oa]|poner?|pone?|pon|un[as]?|tareas?|pendientes?|to-?do|recordatorios?|de|que|para|en|el|la|los|las)\b/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        taskText = taskText ? taskText.charAt(0).toUpperCase() + taskText.slice(1) : 'Tarea rápida';
+        return {
+          rule_id: 'GENERAL_CONVERSATION',
+          suggested_message: `Anoté la tarea "${taskText}". Hacé clic en "Ejecutar en el lienzo" para crearla en tus objetivos activos con su casilla de verificación.`,
+          action_taken: 'ADD_CARD',
+          action_payload: {
+            type: 'add_card',
+            block_type: 'active_objectives',
+            title: taskText,
+            content: taskText,
+            isTask: true
+          }
+        };
+      }
+
+      // D) Detección de creación de Nota (Nota informativa sin checkbox, isTask: false)
+      const isNoteCreation = /\b(?:notas?|apuntes?|ideas?)\b/i.test(cleanUserMsg) &&
+        /\b(?:crear?|agreg[aá]r?|anot[aá]r?|nuev[oa]|guardar?|escrib[ií]r?)\b/i.test(cleanUserMsg);
+      if (isNoteCreation) {
+        let noteText = (userMessage || '')
+          .replace(/\b(?:crear?|agreg[aá]r?|anot[aá]r?|nuev[oa]|guardar?|escrib[ií]r?|un[as]?|notas?|apuntes?|ideas?|de|que|para|en|el|la|los|las)\b/gi, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        noteText = noteText ? noteText.charAt(0).toUpperCase() + noteText.slice(1) : 'Nota rápida';
+        let blockType = 'personal_block';
+        if (/inspiraci|creativid|idea/i.test(cleanUserMsg)) blockType = 'inspiration_creativity';
+        else if (/archivo|vida|bit[aá]cora/i.test(cleanUserMsg)) blockType = 'life_archive';
+        else if (/objetivo|activo|proyecto/i.test(cleanUserMsg)) blockType = 'active_objectives';
+
+        return {
+          rule_id: 'GENERAL_CONVERSATION',
+          suggested_message: `Anoté tu apunte: "${noteText}". Hacé clic en "Ejecutar en el lienzo" para fijarlo en tu espacio de trabajo.`,
+          action_taken: 'ADD_CARD',
+          action_payload: {
+            type: 'add_card',
+            block_type: blockType,
+            title: noteText,
+            content: noteText,
+            isTask: false
+          }
+        };
+      }
+
+      // E) Consultas sobre Hábitos del usuario
+      if (cleanUserMsg.includes('hábito') || cleanUserMsg.includes('habito') || cleanUserMsg.includes('rutina')) {
+        const habits = ragContext?.contextSnapshot?.habitsSummary?.habits || [];
+        if (habits.length > 0) {
+          const completed = habits.filter(h => h.completedToday).map(h => `"${h.name}"`).join(', ');
+          const pending = habits.filter(h => !h.completedToday).map(h => `"${h.name}"`).join(', ');
+          let msg = `En tu tracker tenés ${habits.length} hábito(s). `;
+          if (completed) msg += `Completados hoy: ${completed}. `;
+          if (pending) msg += `Pendientes hoy: ${pending}.`;
+          suggestedMessage = msg;
+        } else {
+          suggestedMessage = 'Actualmente no tenés hábitos cargados en el tracker. Podés pedirme "crear hábito de..." en cualquier momento.';
+        }
+      }
+      // F) Consultas sobre Calendario / Agenda
+      else if (cleanUserMsg.includes('calendario') || cleanUserMsg.includes('agenda') || cleanUserMsg.includes('reunión') || cleanUserMsg.includes('reunion') || cleanUserMsg.includes('meet')) {
+        const cal = ragContext?.contextSnapshot?.calendarSummary;
+        if (cal?.connected) {
+          if (Array.isArray(cal.events) && cal.events.length > 0) {
+            const evList = cal.events.map(e => `"${e.title}"`).join(', ');
+            suggestedMessage = `Para hoy tenés ${cal.totalCount} evento(s) en Google Calendar (${cal.busyHours}h ocupadas): ${evList}.`;
+          } else {
+            suggestedMessage = 'Tu Google Calendar está conectado y no tenés reuniones agendadas para el resto del día.';
+          }
+        } else {
+          suggestedMessage = 'No tenés vinculada tu cuenta de Google Calendar todavía. Podés sincronizarla desde la barra de productividad para que pueda recordarte tus horarios.';
+        }
+      }
+      // G) Consultas sobre Tareas y Notas del tablero
+      else if (cleanUserMsg.includes('tarea') || cleanUserMsg.includes('pendiente') || cleanUserMsg.includes('completad') || cleanUserMsg.includes('tablero') || cleanUserMsg.includes('lienzo')) {
+        const passages = ragContext?.retrievedPassages || [];
+        const tasks = passages.filter(p => p.isTask || p.type === 'task');
+        if (tasks.length > 0) {
+          const completed = tasks.filter(t => t.checked).map(t => `"${t.title || t.text}"`).join(', ');
+          const pending = tasks.filter(t => !t.checked).map(t => `"${t.title || t.text}"`).join(', ');
+          let msg = 'Revisando tu lienzo: ';
+          if (pending) msg += `Tenés pendiente: ${pending}. `;
+          if (completed) msg += `Ya completaste: ${completed}. `;
+          suggestedMessage = msg.trim();
+        } else {
+          suggestedMessage = 'En este momento no detecto tareas pendientes en tus objetivos activos. Si querés podés pedirme que anote una nueva tarea.';
+        }
+      }
+      // H) Sugerencias conversacionales contextuales
+      else if (cleanUserMsg.includes('react') || cleanUserMsg.includes('código') || cleanUserMsg.includes('program')) {
         suggestedMessage = 'Para avanzar con programación o React sin abrumarte, te sugiero desglosar el tema en pequeños conceptos puntuales (como componentes o props). Avanzar de a un paso simple despeja la mente.';
       } else if (cleanUserMsg.includes('estudi') || cleanUserMsg.includes('aprend')) {
         suggestedMessage = 'Aprender y estudiar a tu propio ritmo es la clave. Podés elegir un solo tema para hoy y explorar lecturas breves o ejemplos prácticos sin apuro.';
@@ -252,17 +389,6 @@ class LangChainOrchestratorService {
         suggestedMessage = 'Para organizar el día con serenidad, elegir una única meta principal para hoy suele marcar la diferencia. El resto de las ideas pueden esperar en tus notas.';
       } else if (cleanUserMsg.includes('hola') || cleanUserMsg.includes('buen') || cleanUserMsg.includes('que tal') || cleanUserMsg.includes('cómo estás')) {
         suggestedMessage = '¡Hola! Qué bueno encontrarnos. Acá estoy para acompañarte a ordenar tus ideas, responder dudas o despejar tu día a tu propio ritmo. ¿En qué te gustaría enfocarte hoy?';
-      } else if (cleanUserMsg.includes('pomodoro') || cleanUserMsg.includes('temporizador')) {
-        return {
-          rule_id: 'GENERAL_CONVERSATION',
-          suggested_message: 'Si querés enfocar un bloque de concentración, un ciclo de 25 minutos es una opción excelente para arrancar sin distracciones.',
-          action_taken: 'CONFIG_POMODORO',
-          action_payload: {
-            type: 'start_pomodoro',
-            focusMinutes: 25,
-            content: 'Ciclo de enfoque de 25 minutos'
-          }
-        };
       } else {
         suggestedMessage = cleanUserMsg
           ? `Comprendo tu consulta: "${userMessage}". Mi sugerencia es ir paso a paso, priorizando tu bienestar mental y avanzando a un ritmo sostenible. ¿Querés que profundicemos en algún punto específico?`
@@ -353,16 +479,28 @@ class LangChainOrchestratorService {
     if (apiKey) {
       const isConversational = effectiveRuleId === 'GENERAL_CONVERSATION';
       const promptDirectives = isConversational
-        ? `[DIRECTIVA CONVERSACIONAL Y SUGERENCIAS PLANAS EN TEXTO]
-- El usuario está dialogando libremente o haciendo una consulta general/de estudio/organización.
-- Tu respuesta debe ser una SUGERENCIA PLANA EN FORMATO DE TEXTO: empática, orientadora, breve (1 a 3 oraciones) y 100% libre de culpa (guilt-free).
-- NO propongas repetitivamente hacer un Pomodoro ni temporizadores a menos que el usuario lo solicite expresamente en su mensaje.
-- Para consultas o charlas generales:
-  * "rule_id": "GENERAL_CONVERSATION"
-  * "suggested_message": tu sugerencia o respuesta orientadora en texto plano
-  * "action_taken": "CONVERSATIONAL_SUGGESTION"
-  * "action_payload": null (SIN acción activa ni tarjeta en el lienzo).
-- ÚNICAMENTE incluye un "action_payload" cuando el usuario solicite explícitamente una acción concreta sobre el lienzo (por ejemplo: "agendame una tarjeta para...", "creame una nota de...", "poné un temporizador de 25 min", "anotame el hábito de...").`
+        ? `[DIRECTIVA CONVERSACIONAL Y DE ACCIONES SOBRE EL LIENZO]
+- El usuario está dialogando libremente, consultando o solicitando una acción.
+- TU RESPUESTA DEBE SER EMPÁTICA, ORIENTADORA, BREVE (1 a 3 oraciones) y 100% LIBRE DE CULPA (guilt-free).
+- NO propongas repetitivamente hacer un Pomodoro a menos que el usuario lo pida expresamente.
+
+- CUÁNDO GENERAR ACCIÓN EN EL LIENZO ("action_payload"):
+  * Si el usuario pide crear, agregar, anotar o iniciar algo (ej: "crear una tarea para...", "agregar nota de...", "iniciar pomodoro...", "crear hábito de..."):
+    - "action_taken" DEBE ser una acción ejecutable ("ADD_CARD", "CONFIG_POMODORO", "ADD_HABIT").
+    - "action_payload" DEBE ser completado con:
+      * type: "add_card" (para notas o tareas), "start_pomodoro" (para temporizador) o "add_habit" (para hábito).
+      * Para type: "add_card":
+        - "isTask": true si el usuario solicita una TAREA, to-do, pendiente o recordatorio con casilla de verificación.
+        - "isTask": false si el usuario solicita una NOTA, apunte, idea o pensamiento sin checkbox.
+        - "block_type": "active_objectives" (para tareas y objetivos), "personal_block", "inspiration_creativity", o "life_archive".
+        - "title" y "content" con el texto limpio de la tarea o nota.
+  * Si el usuario hace una consulta general, teórica, conversacional o sobre el estado de sus tareas/hábitos sin pedir crear nada nuevo:
+    - "action_taken": "CONVERSATIONAL_SUGGESTION"
+    - "action_payload": null (ESTRICTAMENTE null, sin botón ni acción en el lienzo).
+
+- DISTINCIÓN DE ESTADO DE TAREAS, HÁBITOS Y GOOGLE CALENDAR:
+  * Diferencia claramente entre tareas completadas y tareas pendientes basándote en los datos reales provistos en el contexto.
+  * Usa los datos provistos en [TRACKER DE HÁBITOS (EN VIVO)] y [AGENDA DEL DÍA (GOOGLE CALENDAR)] para responder con fidelidad.`
         : `[DIRECTIVA DE REGLA DEL MOTOR DE INFERENCIA]
 - Se activó la regla técnica: "${effectiveRuleId}".
 - Devuelve "rule_id": "${effectiveRuleId}", mensaje empático guilt-free y el "action_payload" correspondiente si aplica.`;

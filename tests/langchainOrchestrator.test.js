@@ -264,6 +264,71 @@ describe('FASE 5: Orquestador LangChain con Prompt de Fase 4 y Structured Output
       expect(res.body.suggested_message).not.toContain('ciclo Pomodoro de 25 minutos');
     });
 
+    test('POST /api/ai/infer genera action_payload con isTask: true cuando el usuario pide crear una tarea', async () => {
+      pool.query
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ id: 'log-task-creation', created_at: new Date().toISOString() }] });
+
+      const res = await request(app)
+        .post('/api/ai/infer')
+        .set('Authorization', 'Bearer valid-jwt-token')
+        .send({
+          message: 'Crear una tarea para comprar café'
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.action_taken).toBe('ADD_CARD');
+      expect(res.body.action_payload).toBeDefined();
+      expect(res.body.action_payload.type).toBe('add_card');
+      expect(res.body.action_payload.isTask).toBe(true);
+      expect(res.body.action_payload.content).toContain('Comprar café');
+    });
+
+    test('POST /api/ai/infer genera action_payload con isTask: false cuando el usuario pide agregar una nota', async () => {
+      pool.query
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ id: 'log-note-creation', created_at: new Date().toISOString() }] });
+
+      const res = await request(app)
+        .post('/api/ai/infer')
+        .set('Authorization', 'Bearer valid-jwt-token')
+        .send({
+          message: 'Agregar una nota de repasar React'
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.action_taken).toBe('ADD_CARD');
+      expect(res.body.action_payload).toBeDefined();
+      expect(res.body.action_payload.type).toBe('add_card');
+      expect(res.body.action_payload.isTask).toBe(false);
+      expect(res.body.action_payload.content).toContain('Repasar React');
+    });
+
+    test('POST /api/ai/infer genera action_payload para nuevo hábito', async () => {
+      pool.query
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ id: 'log-habit-creation', created_at: new Date().toISOString() }] });
+
+      const res = await request(app)
+        .post('/api/ai/infer')
+        .set('Authorization', 'Bearer valid-jwt-token')
+        .send({
+          message: 'Crear hábito de meditar 10 minutos'
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.action_taken).toBe('ADD_HABIT');
+      expect(res.body.action_payload).toBeDefined();
+      expect(res.body.action_payload.type).toBe('add_habit');
+      expect(res.body.action_payload.title).toContain('Meditar');
+    });
+
     test('PATCH /api/ai/copilot/feedback actualiza user_feedback en ai_inference_logs', async () => {
       pool.query.mockResolvedValueOnce({ rowCount: 1 });
 
