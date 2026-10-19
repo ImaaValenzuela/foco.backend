@@ -130,12 +130,12 @@ const RULE_ACTION_MAPPING = {
  * Normaliza nombres de modelos de Google Gemini ante deprecaciones o aliases
  */
 function normalizeGeminiModel(name) {
-  if (!name) return 'gemini-flash-latest';
+  if (!name) return 'gemini-3.5-flash-lite';
   const clean = name.trim();
   const legacyMap = {
-    'gemini-1.5-flash-latest': 'gemini-flash-latest',
-    'gemini-1.5-flash': 'gemini-flash-latest',
-    'gemini-2.5-flash': 'gemini-flash-latest',
+    'gemini-1.5-flash-latest': 'gemini-3.5-flash-lite',
+    'gemini-1.5-flash': 'gemini-3.5-flash-lite',
+    'gemini-2.5-flash': 'gemini-3.5-flash-lite',
     'gemini-1.5-pro': 'gemini-pro-latest',
     'gemini-1.5-pro-latest': 'gemini-pro-latest'
   };
@@ -155,7 +155,7 @@ class LangChainOrchestratorService {
   constructor() {
     this.provider = process.env.LLM_PROVIDER || process.env.AI_PROVIDER || 'gemini';
     this.geminiApiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || null;
-    this.modelName = normalizeGeminiModel(process.env.GEMINI_MODEL || 'gemini-flash-latest');
+    this.modelName = normalizeGeminiModel(process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite');
   }
 
   /**
@@ -325,9 +325,13 @@ Debes responder ÚNICAMENTE mediante el esquema estructurado JSON requerido, sin
       const baseModel = normalizeGeminiModel(process.env.GEMINI_MODEL || this.modelName);
       const candidateModels = [
         baseModel,
-        'gemini-flash-latest',
-        'gemini-3.8-flash',
-        'gemini-pro-latest'
+        'gemini-3.5-flash-lite',
+        'gemini-flash-lite-latest',
+        'gemini-3.5-flash',
+        'gemini-3.1-flash-lite',
+        'gemini-3.6-flash',
+        'gemini-3.7-flash',
+        'gemini-flash-latest'
       ].filter((m, i, arr) => m && arr.indexOf(m) === i);
 
       for (const candidate of candidateModels) {
@@ -347,12 +351,19 @@ Debes responder ÚNICAMENTE mediante el esquema estructurado JSON requerido, sin
             console.warn(`[LangChainOrchestrator] Validación parcial con ${candidate}:`, parsed.error.issues);
           }
         } catch (attemptErr) {
-          console.warn(`[LangChainOrchestrator] Modelo ${candidate} no disponible (${attemptErr.message}). Probando alternativa...`);
+          const errMsg = attemptErr?.message || '';
+          if (errMsg.includes('429') || errMsg.includes('Quota exceeded') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+            console.warn(`[LangChainOrchestrator] Cuota gratuita alcanzada para '${candidate}' (429 Too Many Requests). Probando alternativa en cascada...`);
+          } else if (errMsg.includes('404') || errMsg.includes('not found')) {
+            console.warn(`[LangChainOrchestrator] Modelo '${candidate}' no disponible en la API (404 Not Found). Probando alternativa...`);
+          } else {
+            console.warn(`[LangChainOrchestrator] Modelo '${candidate}' temporalmente no disponible (${errMsg.slice(0, 100)}). Probando alternativa...`);
+          }
         }
       }
 
       if (!structuredResult) {
-        console.warn('[LangChainOrchestrator] Ningún modelo LLM remoto respondió exitosamente. Aplicando fallback estructurado.');
+        console.warn('[LangChainOrchestrator] Cuota de API consumida en los modelos disponibles. Activando fallback local determinista de alta fidelidad.');
         structuredResult = this.generateFallbackStructuredOutput({
           ruleId: effectiveRuleId,
           userMessage: message,
