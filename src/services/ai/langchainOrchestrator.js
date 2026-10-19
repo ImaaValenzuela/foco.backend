@@ -37,16 +37,20 @@ const ActionPayloadSchema = z.object({
 }).describe('Carga útil técnica ejecutable sobre el lienzo interactivo');
 
 const StructuredInferenceSchema = z.object({
-  rule_id: z.string().describe('Código rule_id del catálogo de las 24 reglas IF-THEN del motor de inferencia'),
+  rule_id: z.string().describe('Código rule_id del catálogo de las 24 reglas IF-THEN del motor de inferencia o GENERAL_CONVERSATION'),
   suggested_message: z.string().describe('Mensaje conversacional empático, breve (1 a 3 oraciones), orientador y 100% libre de culpa (guilt-free)'),
-  action_taken: z.string().describe('Acción técnica sugerida (ej. INJECT_CONVERSATIONAL_ALERT, CONFIG_POMODORO, RECOMMEND_PROJECT_PLAN, etc.)'),
-  action_payload: ActionPayloadSchema.optional().nullable().describe('Payload de acción para el botón azul "Ejecutar en el lienzo"')
+  action_taken: z.string().describe('Acción técnica sugerida (ej. CONVERSATIONAL_SUGGESTION, INJECT_CONVERSATIONAL_ALERT, CONFIG_POMODORO, RECOMMEND_PROJECT_PLAN, etc.)'),
+  action_payload: ActionPayloadSchema.optional().nullable().describe('Payload de acción para el botón azul "Ejecutar en el lienzo" (dejar en null para sugerencias puramente conversacionales en texto)')
 });
 
 /**
  * Catálogo de referencia de acciones por defecto para las 24 reglas IF-THEN
  */
 const RULE_ACTION_MAPPING = {
+  GENERAL_CONVERSATION: {
+    action_taken: 'CONVERSATIONAL_SUGGESTION',
+    default_payload: null
+  },
   F_DISP_DESVIO_ESTUDIO: {
     action_taken: 'INJECT_CONVERSATIONAL_ALERT',
     default_payload: {
@@ -231,15 +235,51 @@ class LangChainOrchestratorService {
    * @returns {object} Respuesta JSON estricta acorde a StructuredInferenceSchema
    */
   generateFallbackStructuredOutput({ ruleId, userMessage, ragContext }) {
-    const effectiveRule = ruleId || ragContext?.meta?.ruleId || 'F_DISP_DESVIO_ESTUDIO';
-    const ruleConfig = RULE_ACTION_MAPPING[effectiveRule] || {
-      action_taken: 'INJECT_CONVERSATIONAL_ALERT',
-      default_payload: {
-        type: 'add_card',
-        block_type: 'active_objectives',
-        title: 'Micro-acción sugerida',
-        content: 'Acción práctica recomendada por tu copiloto'
+    const isConversational = !ruleId || ruleId === 'GENERAL_CONVERSATION' || ruleId === 'GENERAL_COPILOT_GUIDANCE';
+    const effectiveRule = isConversational ? 'GENERAL_CONVERSATION' : ruleId;
+
+    if (isConversational) {
+      const cleanUserMsg = (userMessage || '').toLowerCase();
+      let suggestedMessage = '';
+
+      if (cleanUserMsg.includes('react') || cleanUserMsg.includes('código') || cleanUserMsg.includes('program')) {
+        suggestedMessage = 'Para avanzar con programación o React sin abrumarte, te sugiero desglosar el tema en pequeños conceptos puntuales (como componentes o props). Avanzar de a un paso simple despeja la mente.';
+      } else if (cleanUserMsg.includes('estudi') || cleanUserMsg.includes('aprend')) {
+        suggestedMessage = 'Aprender y estudiar a tu propio ritmo es la clave. Podés elegir un solo tema para hoy y explorar lecturas breves o ejemplos prácticos sin apuro.';
+      } else if (cleanUserMsg.includes('cansad') || cleanUserMsg.includes('agotad') || cleanUserMsg.includes('abrumad') || cleanUserMsg.includes('estres')) {
+        suggestedMessage = 'Es completamente normal sentir momentos de baja energía o cansancio. Recordá que no hace falta resolver todo de golpe; descansar, hidratarse o estirar el cuerpo renueva el foco.';
+      } else if (cleanUserMsg.includes('organiz') || cleanUserMsg.includes('plan') || cleanUserMsg.includes('priorid') || cleanUserMsg.includes('empez')) {
+        suggestedMessage = 'Para organizar el día con serenidad, elegir una única meta principal para hoy suele marcar la diferencia. El resto de las ideas pueden esperar en tus notas.';
+      } else if (cleanUserMsg.includes('hola') || cleanUserMsg.includes('buen') || cleanUserMsg.includes('que tal') || cleanUserMsg.includes('cómo estás')) {
+        suggestedMessage = '¡Hola! Qué bueno encontrarnos. Acá estoy para acompañarte a ordenar tus ideas, responder dudas o despejar tu día a tu propio ritmo. ¿En qué te gustaría enfocarte hoy?';
+      } else if (cleanUserMsg.includes('pomodoro') || cleanUserMsg.includes('temporizador')) {
+        return {
+          rule_id: 'GENERAL_CONVERSATION',
+          suggested_message: 'Si querés enfocar un bloque de concentración, un ciclo de 25 minutos es una opción excelente para arrancar sin distracciones.',
+          action_taken: 'CONFIG_POMODORO',
+          action_payload: {
+            type: 'start_pomodoro',
+            focusMinutes: 25,
+            content: 'Ciclo de enfoque de 25 minutos'
+          }
+        };
+      } else {
+        suggestedMessage = cleanUserMsg
+          ? `Comprendo tu consulta: "${userMessage}". Mi sugerencia es ir paso a paso, priorizando tu bienestar mental y avanzando a un ritmo sostenible. ¿Querés que profundicemos en algún punto específico?`
+          : '¡Hola! Estoy acá para acompañarte a despejar tu día y organizar tus prioridades con calma. ¿En qué puedo ayudarte hoy?';
       }
+
+      return {
+        rule_id: 'GENERAL_CONVERSATION',
+        suggested_message: suggestedMessage,
+        action_taken: 'CONVERSATIONAL_SUGGESTION',
+        action_payload: null
+      };
+    }
+
+    const ruleConfig = RULE_ACTION_MAPPING[effectiveRule] || {
+      action_taken: 'CONVERSATIONAL_SUGGESTION',
+      default_payload: null
     };
 
     let suggestedMessage = '';
@@ -299,7 +339,10 @@ class LangChainOrchestratorService {
     });
 
     const phase4SystemPrompt = ragContext.systemPrompt;
-    const effectiveRuleId = ruleId || ragContext.meta?.ruleId || 'F_DISP_DESVIO_ESTUDIO';
+    // Solo consideramos regla activa si fue especificada explícitamente en el llamado.
+    // Si el usuario escribe libremente en el chat, se trata de una interacción conversacional (GENERAL_CONVERSATION)
+    const isExplicitRule = Boolean(ruleId);
+    const effectiveRuleId = isExplicitRule ? ruleId : 'GENERAL_CONVERSATION';
 
     // 2. EJECUCIÓN CON LANGCHAIN STRUCTURED OUTPUTS
     const isTestEnv = process.env.NODE_ENV === 'test' && !process.env.TEST_LIVE_LLM;
@@ -308,14 +351,32 @@ class LangChainOrchestratorService {
     let usedLlm = false;
 
     if (apiKey) {
+      const isConversational = effectiveRuleId === 'GENERAL_CONVERSATION';
+      const promptDirectives = isConversational
+        ? `[DIRECTIVA CONVERSACIONAL Y SUGERENCIAS PLANAS EN TEXTO]
+- El usuario está dialogando libremente o haciendo una consulta general/de estudio/organización.
+- Tu respuesta debe ser una SUGERENCIA PLANA EN FORMATO DE TEXTO: empática, orientadora, breve (1 a 3 oraciones) y 100% libre de culpa (guilt-free).
+- NO propongas repetitivamente hacer un Pomodoro ni temporizadores a menos que el usuario lo solicite expresamente en su mensaje.
+- Para consultas o charlas generales:
+  * "rule_id": "GENERAL_CONVERSATION"
+  * "suggested_message": tu sugerencia o respuesta orientadora en texto plano
+  * "action_taken": "CONVERSATIONAL_SUGGESTION"
+  * "action_payload": null (SIN acción activa ni tarjeta en el lienzo).
+- ÚNICAMENTE incluye un "action_payload" cuando el usuario solicite explícitamente una acción concreta sobre el lienzo (por ejemplo: "agendame una tarjeta para...", "creame una nota de...", "poné un temporizador de 25 min", "anotame el hábito de...").`
+        : `[DIRECTIVA DE REGLA DEL MOTOR DE INFERENCIA]
+- Se activó la regla técnica: "${effectiveRuleId}".
+- Devuelve "rule_id": "${effectiveRuleId}", mensaje empático guilt-free y el "action_payload" correspondiente si aplica.`;
+
       const fullSystemInstruction = `${phase4SystemPrompt}
+
+${promptDirectives}
 
 [FORMATO DE RESPUESTA OBLIGATORIO - LANGCHAIN STRUCTURED OUTPUT]
 Debes responder ÚNICAMENTE mediante el esquema estructurado JSON requerido, sin preámbulos, markdown ni explicaciones adicionales:
-- rule_id: regla activada ("${effectiveRuleId}")
-- suggested_message: mensaje breve, cálido, empático y libre de culpa
-- action_taken: acción técnica sugerida
-- action_payload: detalle de tarjeta, pomodoro o hábito a ejecutar en el lienzo`;
+- rule_id: regla ("${effectiveRuleId}")
+- suggested_message: sugerencia o mensaje breve, cálido, empático y libre de culpa
+- action_taken: acción técnica sugerida ("CONVERSATIONAL_SUGGESTION", "INJECT_CONVERSATIONAL_ALERT", etc.)
+- action_payload: detalle de tarjeta, pomodoro o hábito a ejecutar en el lienzo (debe ser null para sugerencias puramente conversacionales en texto)`;
 
       const messages = [
         { role: 'system', content: fullSystemInstruction },

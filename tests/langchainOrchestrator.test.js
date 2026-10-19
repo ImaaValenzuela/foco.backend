@@ -148,6 +148,20 @@ describe('FASE 5: Orquestador LangChain con Prompt de Fase 4 y Structured Output
       const parsed = StructuredInferenceSchema.safeParse(invalidPayload);
       expect(parsed.success).toBe(false);
     });
+
+    test('Valida correctamente sugerencias planas de texto sin action_payload (conversación pura)', () => {
+      const conversationalPayload = {
+        rule_id: 'GENERAL_CONVERSATION',
+        suggested_message: 'Para avanzar con React podés desglosarlo en partes pequeñas y avanzar con tranquilidad.',
+        action_taken: 'CONVERSATIONAL_SUGGESTION',
+        action_payload: null
+      };
+
+      const parsed = StructuredInferenceSchema.safeParse(conversationalPayload);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data.rule_id).toBe('GENERAL_CONVERSATION');
+      expect(parsed.data.action_payload).toBeNull();
+    });
   });
 
   describe('3. Persistencia de Telemetría y Feedback Loop en BD', () => {
@@ -227,6 +241,27 @@ describe('FASE 5: Orquestador LangChain con Prompt de Fase 4 y Structured Output
       expect(res.body.rule_id).toBe('F_FAT_POMODORO_SOBRE_ENFOQUE');
       expect(res.body.action_taken).toBe('LOCK_POMODORO_COOLDOWN');
       expect(res.body.action_payload.type).toBe('break_prompt');
+    });
+
+    test('POST /api/ai/infer responde con sugerencia plana en texto y action_payload null en consultas conversacionales libres', async () => {
+      pool.query
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [] })
+        .mockResolvedValueOnce({ rows: [{ id: 'log-conversational', created_at: new Date().toISOString() }] });
+
+      const res = await request(app)
+        .post('/api/ai/infer')
+        .set('Authorization', 'Bearer valid-jwt-token')
+        .send({
+          message: 'Hola, ¿cómo estás hoy? Quiero pedirte un consejo para mi día'
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.rule_id).toBe('GENERAL_CONVERSATION');
+      expect(res.body.action_taken).toBe('CONVERSATIONAL_SUGGESTION');
+      expect(res.body.action_payload).toBeNull();
+      expect(res.body.suggested_message).not.toContain('ciclo Pomodoro de 25 minutos');
     });
 
     test('PATCH /api/ai/copilot/feedback actualiza user_feedback en ai_inference_logs', async () => {
