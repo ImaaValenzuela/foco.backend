@@ -1,5 +1,11 @@
 const pool = require('../../db');
 const { CircuitBreaker } = require('../../utils/circuitBreaker');
+let googleCalendarService = null;
+try {
+  googleCalendarService = require('../googleCalendar.service').googleCalendarService;
+} catch (e) {
+  // Graceful fallback ante entornos de test o dependencias circulares
+}
 
 /**
  * Servicio Orquestador de RAG (Fase 4: Retrieval y Ensamble de Prompt)
@@ -160,6 +166,8 @@ class RagOrchestratorService {
                 title: note.title,
                 text: note.text,
                 type: note.type,
+                isTask: note.type === 'task' || Boolean(note.isTask),
+                checked: Boolean(note.checked),
                 similarity: Number(similarity.toFixed(4)),
                 matchType: 'vector'
               });
@@ -185,6 +193,8 @@ class RagOrchestratorService {
               title: note.title,
               text: note.text,
               type: note.type,
+              isTask: note.type === 'task' || Boolean(note.isTask),
+              checked: Boolean(note.checked),
               similarity: Number((0.3 + 0.5 * lexicalScore).toFixed(4)),
               matchType: 'lexical_fallback'
             });
@@ -201,6 +211,8 @@ class RagOrchestratorService {
             title: note.title,
             text: note.text,
             type: note.type,
+            isTask: note.type === 'task' || Boolean(note.isTask),
+            checked: Boolean(note.checked),
             similarity: 0.5,
             matchType: 'context_sample'
           });
@@ -315,6 +327,72 @@ class RagOrchestratorService {
   }
 
   /**
+   * Obtiene el estado real y actualizado de los hábitos del usuario para la fecha de hoy.
+   *
+   * @param {string} userId
+   * @returns {Promise<{ totalCount: number, completedCount: number, pendingCount: number, habits: Array<{ id: string, name: string, completedToday: boolean }> }>}
+   */
+  async getUserHabitsSummary(userId) {
+    if (!userId) return { totalCount: 0, completedCount: 0, pendingCount: 0, habits: [] };
+    try {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const res = await pool.query(
+        `SELECT h.id, h.name, h.created_at,
+                hl.logged_date, hl.is_completed
+         FROM habits h
+         LEFT JOIN habit_logs hl ON h.id = hl.habit_id AND hl.logged_date = $2
+         WHERE h.user_id = $1
+         ORDER BY h.created_at ASC`,
+        [userId, todayStr]
+      );
+
+      const rows = res?.rows || [];
+      if (rows.length === 0) {
+        return { totalCount: 0, completedCount: 0, pendingCount: 0, habits: [] };
+      }
+
+      let completedCount = 0;
+      let pendingCount = 0;
+      const habits = rows.map(r => {
+        const completed = Boolean(r.is_completed);
+        if (completed) completedCount++;
+        else pendingCount++;
+        return {
+          id: r.id,
+          name: r.name,
+          completedToday: completed
+        };
+      });
+
+      return {
+        totalCount: habits.length,
+        completedCount,
+        pendingCount,
+        habits
+      };
+    } catch {
+      return { totalCount: 0, completedCount: 0, pendingCount: 0, habits: [] };
+    }
+  }
+
+  /**
+   * Recupera el resumen de eventos de hoy de Google Calendar si el usuario está conectado.
+   *
+   * @param {string} userId
+   * @returns {Promise<{ connected: boolean, totalCount: number, busyHours: number, hasNightEvents: boolean, events: Array<{ title: string, start: string, end: string }> }>}
+   */
+  async getUserCalendarSummary(userId) {
+    if (!userId || !googleCalendarService || typeof googleCalendarService.getTodayEventsSummary !== 'function') {
+      return { connected: false, totalCount: 0, busyHours: 0, hasNightEvents: false, events: [] };
+    }
+    try {
+      return await googleCalendarService.getTodayEventsSummary(userId);
+    } catch {
+      return { connected: false, totalCount: 0, busyHours: 0, hasNightEvents: false, events: [] };
+    }
+  }
+
+  /**
    * Ensambla el System Prompt con el formato exacto requerido para el decodificador LLM.
    *
    * @param {object} params
@@ -322,9 +400,18 @@ class RagOrchestratorService {
    * @param {object|null} params.inferenceLog Último log de inferencia
    * @param {Array<object>} params.passages Fragmentos semánticos recuperados
    * @param {string|null} params.customAction Acción técnica forzada o por defecto
+   * @param {object|null} [params.habitsSummary] Resumen de hábitos en tiempo real
+   * @param {object|null} [params.calendarSummary] Resumen de Google Calendar
    * @returns {string} Prompt estructurado
    */
-  assembleSystemPrompt({ profile, inferenceLog, passages = [], customAction = null }) {
+  assembleSystemPrompt({
+    profile,
+    inferenceLog,
+    passages = [],
+    customAction = null,
+    habitsSummary = null,
+    calendarSummary = null
+  }) {
     const study = profile?.study_hours_daily ?? 0;
     const work = profile?.work_hours_daily ?? 0;
     const leisure = profile?.leisure_hours_daily ?? 0;
@@ -356,6 +443,27 @@ class RagOrchestratorService {
       }
     }
 
+    // Detalle vivo de hábitos
+    let habitsLiveStr = habitsMetricsStr;
+    if (habitsSummary && Array.isArray(habitsSummary.habits) && habitsSummary.habits.length > 0) {
+      habitsLiveStr = habitsSummary.habits.map(h =>
+        `* [HÁBITO] "${h.name}" -> ${h.completedToday ? 'COMPLETADO HOY ✓' : 'PENDIENTE HOY ⏳'}`
+      ).join('\n  ');
+    }
+
+    // Detalle de Google Calendar
+    let calendarStr = 'Google Calendar no vinculado o sin eventos hoy.';
+    if (calendarSummary && calendarSummary.connected) {
+      if (Array.isArray(calendarSummary.events) && calendarSummary.events.length > 0) {
+        calendarStr = calendarSummary.events.map(e => {
+          const time = e.start ? new Date(e.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Hora no definida';
+          return `* [REUNIÓN/EVENTO] "${e.title}" (${time})`;
+        }).join('\n  ');
+      } else {
+        calendarStr = 'Conectado a Google Calendar. Sin reuniones agendadas para hoy.';
+      }
+    }
+
     // Fragmentos semánticos relevantes del lienzo
     let passagesStr = 'No se encontraron notas o tareas directamente asociadas a la consulta en el lienzo.';
     if (Array.isArray(passages) && passages.length > 0) {
@@ -363,7 +471,10 @@ class RagOrchestratorService {
         const titlePart = p.title ? `"${p.title}": ` : '';
         const bodyPart = p.text ? p.text : '';
         const simPart = typeof p.similarity === 'number' ? ` (Similitud: ${(p.similarity * 100).toFixed(1)}%)` : '';
-        return `* [${p.blockType || 'canvas'}] ${titlePart}${bodyPart}${simPart}`;
+        const tag = p.isTask !== undefined
+          ? (p.isTask ? (p.checked ? ' [TAREA - COMPLETADA/HECHA ✓]' : ' [TAREA - PENDIENTE ⏳]') : ' [NOTA INFORMATIVA 📝]')
+          : (p.type === 'task' ? (p.checked ? ' [TAREA - COMPLETADA]' : ' [TAREA - PENDIENTE]') : '');
+        return `* [${p.blockType || 'canvas'}] ${titlePart}${bodyPart}${tag}${simPart}`;
       }).join('\n  ');
     }
 
@@ -386,6 +497,23 @@ Tu tono es empático, cercano, profesional y 100% libre de culpa (guilt-free). T
 - Fragmentos Semánticos Relevantes del Lienzo (RAG - pgvector):
   ${passagesStr}
 
+[TRACKER DE HÁBITOS (EN VIVO)]
+- Total Hábitos Registrados: ${habitsSummary?.totalCount ?? 0} (Completados hoy: ${habitsSummary?.completedCount ?? 0}, Pendientes hoy: ${habitsSummary?.pendingCount ?? 0})
+  ${habitsLiveStr}
+
+[AGENDA DEL DÍA (GOOGLE CALENDAR)]
+- Estado: ${calendarSummary?.connected ? `Conectado (${calendarSummary.totalCount} eventos, ${calendarSummary.busyHours}h ocupadas)` : 'No conectado o sin eventos'}
+  ${calendarStr}
+
+[DIRECTIVAS OPERATIVAS: TAREAS VS NOTAS, ESTADOS Y CALENDARIO]
+1. DISTINCIÓN ENTRE TAREA Y NOTA:
+   - TAREA (isTask: true): Elemento de acción con casilla de verificación (checkbox). Puede estar en estado COMPLETADA (tachada/marcada) o PENDIENTE. Si el usuario pide crear o anotar una "tarea", "pendiente", "to-do" o "recordatorio", debes proponer una acción con isTask: true.
+   - NOTA (isTask: false): Pensamiento, apunte, idea o texto libre sin checkbox. Si el usuario pide agregar una "nota", "apunte" o "idea", debes proponer una acción con isTask: false.
+2. LECTURA DE ESTADO:
+   - Cuando el usuario pregunte por sus tareas, identifica y distingue con total precisión cuáles ya están completadas y cuáles siguen pendientes según el lienzo.
+3. HÁBITOS Y GOOGLE CALENDAR:
+   - Cuando el usuario pregunte por sus hábitos o su agenda/reuniones de hoy, apóyate fielmente en los datos de [TRACKER DE HÁBITOS (EN VIVO)] y [AGENDA DEL DÍA (GOOGLE CALENDAR)].
+
 [INSTRUCCIÓN DE GENERACIÓN]
 Genera una respuesta conversacional breve (máximo 3 oraciones), accionable y empática que acompañe la acción técnica (${actionTaken}), proponiendo un micro-paso práctico sin abrumar ni juzgar al usuario.`.trim();
   }
@@ -394,8 +522,9 @@ Genera una respuesta conversacional breve (máximo 3 oraciones), accionable y em
    * Pipeline orquestador completo:
    * 1. Recupera la regla más reciente en `ai_inference_logs`
    * 2. Recupera la línea base de `onboarding_profiling`
-   * 3. Ejecuta la recuperación semántica híbrida (pgvector + léxica) sobre `blocks`
-   * 4. Ensambla y retorna el prompt listo para inyección al LLM decoder
+   * 3. Recupera los hábitos reales en vivo y la agenda de Google Calendar
+   * 4. Ejecuta la recuperación semántica híbrida (pgvector + léxica) sobre `blocks`
+   * 5. Ensambla y retorna el prompt listo para inyección al LLM decoder
    *
    * @param {string} userId
    * @param {object} options
@@ -403,18 +532,29 @@ Genera una respuesta conversacional breve (máximo 3 oraciones), accionable y em
    * @param {number} [options.limit] Máximo de pasajes a recuperar (default 3)
    * @param {number} [options.threshold] Umbral mínimo de similitud coseno (default 0.25)
    * @param {string} [options.customAction] Sobreescritura opcional de la acción técnica
+   * @param {object} [options.customHabitsSummary]
+   * @param {object} [options.customCalendarSummary]
    * @returns {Promise<object>} Objeto con el prompt ensamblado, metadatos y pasajes
    */
   async orchestrate(userId, options = {}) {
-    const { query = null, limit = 3, threshold = 0.25, customAction = null } = options;
+    const {
+      query = null,
+      limit = 3,
+      threshold = 0.25,
+      customAction = null,
+      customHabitsSummary = null,
+      customCalendarSummary = null
+    } = options;
 
     let profile = null;
     let inferenceLog = null;
+    let habitsSummary = customHabitsSummary;
+    let calendarSummary = customCalendarSummary;
     let passages = [];
     let usedFallback = false;
 
     try {
-      // 1. Contexto relacional paralelo
+      // 1. Contexto relacional base paralelo
       const [profileData, logData] = await Promise.all([
         this.getOnboardingProfile(userId),
         this.getLastInferenceLog(userId)
@@ -423,7 +563,15 @@ Genera una respuesta conversacional breve (máximo 3 oraciones), accionable y em
       profile = profileData;
       inferenceLog = logData;
 
-      // 2. Definición del query de búsqueda semántica:
+      // 2. Consulta de hábitos y calendar en vivo (aislados, sólo fuera de mocks restringidos de test)
+      if (!habitsSummary && process.env.NODE_ENV !== 'test') {
+        habitsSummary = await this.getUserHabitsSummary(userId);
+      }
+      if (!calendarSummary && process.env.NODE_ENV !== 'test') {
+        calendarSummary = await this.getUserCalendarSummary(userId);
+      }
+
+      // 3. Definición del query de búsqueda semántica:
       // Si el llamador proporcionó query explícita la usamos; de lo contrario,
       // utilizamos el mensaje sugerido o la regla del snapshot como foco semántico
       const effectiveQuery = query || inferenceLog?.suggested_message || inferenceLog?.rule_id || '';
@@ -448,13 +596,17 @@ Genera una respuesta conversacional breve (máximo 3 oraciones), accionable y em
         mot_organization: false,
         mot_reduce_fatigue: false
       };
+      habitsSummary = habitsSummary || { totalCount: 0, completedCount: 0, pendingCount: 0, habits: [] };
+      calendarSummary = calendarSummary || { connected: false, totalCount: 0, busyHours: 0, hasNightEvents: false, events: [] };
     }
 
     const systemPrompt = this.assembleSystemPrompt({
       profile,
       inferenceLog,
       passages,
-      customAction
+      customAction,
+      habitsSummary,
+      calendarSummary
     });
 
     return {
@@ -470,7 +622,9 @@ Genera una respuesta conversacional breve (máximo 3 oraciones), accionable y em
       retrievedPassages: passages,
       contextSnapshot: {
         profile,
-        lastInferenceLogId: inferenceLog?.id || null
+        lastInferenceLogId: inferenceLog?.id || null,
+        habitsSummary,
+        calendarSummary
       }
     };
   }
@@ -478,7 +632,22 @@ Genera una respuesta conversacional breve (máximo 3 oraciones), accionable y em
 
 const ragOrchestratorService = new RagOrchestratorService();
 
+/**
+ * Función canónica de la Fase 4 para ensamble de prompt RAG
+ * Permite consumo polimórfico directo por parte del orquestador de Fase 5.
+ */
+function build_rag_prompt(paramsOrUserId, options = {}) {
+  if (typeof paramsOrUserId === 'object' && paramsOrUserId !== null && 'profile' in paramsOrUserId) {
+    return ragOrchestratorService.assembleSystemPrompt(paramsOrUserId);
+  }
+  return ragOrchestratorService.orchestrate(paramsOrUserId, options);
+}
+
+const phase4_prompt_template = (params) => ragOrchestratorService.assembleSystemPrompt(params);
+
 module.exports = {
   RagOrchestratorService,
-  ragOrchestratorService
+  ragOrchestratorService,
+  build_rag_prompt,
+  phase4_prompt_template
 };
